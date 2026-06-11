@@ -129,7 +129,7 @@ extension MoreDataStore {
   }
 
   func applyRecommendedAlgorithmDefaults(healthStore: HealthDataStore) {
-    healthStore.loadBridgeCatalogsIfNeeded()
+    healthStore.ensureBridgeCatalogsLoaded()
     for family in healthStore.algorithmFamilies {
       guard let first = healthStore.algorithms(for: family).first else {
         continue

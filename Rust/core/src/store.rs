@@ -891,6 +891,16 @@ impl GooseStore {
     pub fn open(path: &Path) -> GooseResult<Self> {
         let conn = Connection::open(path)?;
         let store = Self { conn };
+        // The bridge now keeps this connection alive for the whole process, so enable
+        // write-ahead logging (readers don't block on a writer) and a busy timeout so a
+        // concurrent write waits briefly instead of failing with SQLITE_BUSY.
+        store.conn.execute_batch(
+            r#"
+            PRAGMA journal_mode = WAL;
+            PRAGMA busy_timeout = 5000;
+            PRAGMA synchronous = NORMAL;
+            "#,
+        )?;
         store.migrate()?;
         Ok(store)
     }

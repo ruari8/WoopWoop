@@ -1,10 +1,11 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     ffi::{CStr, CString},
     fs,
     os::raw::c_char,
     path::{Path, PathBuf},
     ptr,
+    sync::{Mutex, MutexGuard, OnceLock},
     time::Instant,
 };
 
@@ -7522,11 +7523,45 @@ fn latest_matching_calibration_run(
         }))
 }
 
-fn open_bridge_store(database_path: &str) -> GooseResult<GooseStore> {
+/// Process-global cache of opened stores keyed by database path.
+///
+/// Previously every bridge call ran `GooseStore::open()`, which re-runs the full
+/// `migrate()` batch (~53 `CREATE TABLE/INDEX IF NOT EXISTS` plus column probes) on a
+/// brand-new connection — paid on every single request and on the main thread, which is
+/// the dominant source of UI lag. We now open and migrate each path once, then hand out a
+/// lock guard over the shared connection. `rusqlite::Connection` is `Send` but `!Sync`, so
+/// access is serialized through a per-path `Mutex`; all `GooseStore` methods take `&self`,
+/// so reads and writes both work through the shared guard.
+fn store_cache() -> &'static Mutex<HashMap<String, &'static Mutex<GooseStore>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, &'static Mutex<GooseStore>>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Returns the shared, already-migrated store for `database_path`, locking it for the
+/// duration of the returned guard. The guard derefs to `GooseStore`, so existing call sites
+/// (`let store = open_bridge_store(..)?;` then `store.method()` / `helper(&store)`) compile
+/// unchanged via deref coercion.
+fn open_bridge_store(database_path: &str) -> GooseResult<MutexGuard<'static, GooseStore>> {
     if database_path.trim().is_empty() {
         return Err(GooseError::message("database_path is required"));
     }
-    GooseStore::open(Path::new(database_path))
+
+    let store_mutex = {
+        // Poison recovery: a panic in one handler must not permanently break the cache.
+        let mut cache = store_cache().lock().unwrap_or_else(|poison| poison.into_inner());
+        if let Some(existing) = cache.get(database_path) {
+            *existing
+        } else {
+            let store = GooseStore::open(Path::new(database_path))?;
+            // Leak a stable `'static` mutex per path. The set of paths is tiny (the main
+            // `goose.sqlite` plus the occasional export source), so this never grows.
+            let leaked: &'static Mutex<GooseStore> = Box::leak(Box::new(Mutex::new(store)));
+            cache.insert(database_path.to_string(), leaked);
+            leaked
+        }
+    };
+
+    Ok(store_mutex.lock().unwrap_or_else(|poison| poison.into_inner()))
 }
 
 fn json_object_string(field_name: &str, value: &serde_json::Value) -> GooseResult<String> {

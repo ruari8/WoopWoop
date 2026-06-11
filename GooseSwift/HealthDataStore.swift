@@ -36,6 +36,8 @@ final class HealthDataStore: ObservableObject {
   var heartRateSeriesUpdateObserver: NSObjectProtocol?
   let packetInputQueue = DispatchQueue(label: "com.goose.swift.health.packet-inputs", qos: .utility)
   let heartRateTimelineQueue = DispatchQueue(label: "com.goose.swift.health.heart-rate-timeline", qos: .utility)
+  let bridgeCatalogQueue = DispatchQueue(label: "com.goose.swift.health.bridge-catalogs", qos: .userInitiated)
+  var catalogRefreshInFlight = false
   lazy var databasePath = HealthDataStore.defaultDatabasePath()
 
   static let liveHRVRMSSDDefaultsKey = "goose.swift.liveHRVRMSSD"
@@ -111,6 +113,18 @@ final class HealthDataStore: ObservableObject {
     refreshBridgeCatalogs()
   }
 
+  /// Synchronously guarantees the metric catalogs are populated before returning. Used by
+  /// explicit, user-initiated actions that immediately read `algorithmDefinitions` (not the
+  /// render-path `onAppear` loaders, which use the async `refreshBridgeCatalogs`). After the
+  /// persistent-connection change this is a cheap query rather than a full migrate.
+  func ensureBridgeCatalogsLoaded() {
+    guard algorithmDefinitions.isEmpty else {
+      return
+    }
+    attemptedCatalogLoad = true
+    applyBridgeCatalogResult(HealthDataStore.bridgeCatalogValues())
+  }
+
   func refreshPacketInputsIfNeeded() {
     guard packetInputReports.isEmpty, packetInputStatus == "No run" else {
       return
@@ -162,16 +176,48 @@ final class HealthDataStore: ObservableObject {
   }
 
   func refreshBridgeCatalogs() {
+    // The three catalog calls cross the Rust FFI (SQLite open + query + JSON), which must
+    // not run on the main thread. Do the FFI on a background queue, then hop back to the
+    // main actor for the cheap parsing and @Published assignment.
+    guard !catalogRefreshInFlight else {
+      return
+    }
+    catalogRefreshInFlight = true
+
+    bridgeCatalogQueue.async { [weak self] in
+      let result = HealthDataStore.bridgeCatalogValues()
+      DispatchQueue.main.async { [weak self] in
+        guard let self else {
+          return
+        }
+        self.catalogRefreshInFlight = false
+        self.applyBridgeCatalogResult(result)
+      }
+    }
+  }
+
+  /// Runs the three metric-registry bridge calls off the main thread. Returns the raw
+  /// decoded values; parsing into model types happens back on the main actor.
+  nonisolated static func bridgeCatalogValues() -> Result<(algorithms: Any, references: Any, preferences: Any), Error> {
+    let bridge = GooseRustBridge()
     do {
       let algorithmsValue = try bridge.requestValue(method: "metrics.built_in_definitions")
       let referencesValue = try bridge.requestValue(method: "metrics.reference_definitions")
       let preferencesValue = try bridge.requestValue(method: "metrics.default_preferences")
+      return .success((algorithmsValue, referencesValue, preferencesValue))
+    } catch {
+      return .failure(error)
+    }
+  }
 
-      let parsedAlgorithms = Self.algorithmRows(from: algorithmsValue)
+  private func applyBridgeCatalogResult(_ result: Result<(algorithms: Any, references: Any, preferences: Any), Error>) {
+    switch result {
+    case .success(let values):
+      let parsedAlgorithms = Self.algorithmRows(from: values.algorithms)
         .map { HealthAlgorithmDefinition(row: $0, source: .bridge("metrics.built_in_definitions")) }
-      let parsedReferences = Self.algorithmRows(from: referencesValue)
+      let parsedReferences = Self.algorithmRows(from: values.references)
         .map { HealthAlgorithmDefinition(row: $0, source: .bridge("metrics.reference_definitions")) }
-      let parsedPreferences = Self.preferenceRows(from: preferencesValue)
+      let parsedPreferences = Self.preferenceRows(from: values.preferences)
 
       if !parsedAlgorithms.isEmpty {
         algorithmDefinitions = parsedAlgorithms
@@ -188,7 +234,7 @@ final class HealthDataStore: ObservableObject {
       }
       catalogSource = .bridge("Rust metric registry")
       catalogStatus = "Bridge catalog loaded"
-    } catch {
+    case .failure(let error):
       algorithmDefinitions = []
       referenceDefinitions = []
       selectedAlgorithmByFamily = [:]
