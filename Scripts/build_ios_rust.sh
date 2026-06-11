@@ -6,6 +6,26 @@ APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CORE_DIR="$APP_DIR/Rust/core"
 RUST_DIR="$APP_DIR/Rust"
 
+# Xcode run-script build phases execute with a sanitized PATH that usually omits
+# the Rust toolchain (e.g. ~/.cargo/bin), which makes cargo fail to launch and the
+# build phase exit nonzero. Make cargo discoverable before we use it.
+if ! command -v cargo >/dev/null 2>&1; then
+  if [[ -f "$HOME/.cargo/env" ]]; then
+    # shellcheck disable=SC1091
+    source "$HOME/.cargo/env"
+  fi
+  for candidate in "$HOME/.cargo/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
+    if [[ -x "$candidate/cargo" ]]; then
+      PATH="$candidate:$PATH"
+    fi
+  done
+  export PATH
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "error: cargo not found on PATH. Install Rust via rustup (https://rustup.rs) and add the iOS targets." >&2
+  exit 1
+fi
+
 if [[ "${GOOSE_SKIP_RUST_CORE_BUILD:-0}" == "1" ]]; then
   echo "Skipping Goose Rust core build because GOOSE_SKIP_RUST_CORE_BUILD=1"
   exit 0
