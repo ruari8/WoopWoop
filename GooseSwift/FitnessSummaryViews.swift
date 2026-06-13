@@ -6,7 +6,7 @@ import UIKit
 struct FitnessSummaryView: View {
   let activity: ActivityKind
   @ObservedObject var session: ActivitySessionModel
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @ObservedObject var locationTracker: ActivityLocationTracker
   let onDone: () -> Void
 
@@ -91,14 +91,14 @@ struct FitnessSummaryView: View {
   }
 
   private var averageHeartRateText: String {
-    guard let heartRate = session.averageHeartRate ?? ble.liveHeartRateBPM else {
+    guard let heartRate = session.averageHeartRate ?? liveVitals.liveHeartRateBPM else {
       return "--BPM"
     }
     return "\(heartRate)BPM"
   }
 
   private var peakHeartRateText: String {
-    guard let heartRate = session.maxHeartRate ?? ble.liveHeartRateBPM else {
+    guard let heartRate = session.maxHeartRate ?? liveVitals.liveHeartRateBPM else {
       return "--BPM"
     }
     return "\(heartRate)BPM"
@@ -500,4 +500,3 @@ struct FitnessMetricLabel: View {
       .minimumScaleFactor(0.75)
   }
 }
-

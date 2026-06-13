@@ -265,7 +265,7 @@ extension HealthDataStore {
       packetInputStatus = "No run"
       packetScoreStatus = "No run"
       externalSleepImportStatus = "External sleep imports disabled"
-      packetInputReports = [:]
+      applyPacketInputReports([:], safeMetricRowsByReport: [:])
       packetScoreReports = [:]
       referenceComparisonReports = [:]
       referenceRunStatusByFamily = [:]
@@ -277,7 +277,7 @@ extension HealthDataStore {
       packetInputStatus = "No run"
       packetScoreStatus = "No run"
       externalSleepImportStatus = "External sleep imports disabled"
-      packetInputReports = [:]
+      applyPacketInputReports([:], safeMetricRowsByReport: [:])
       packetScoreReports = [:]
       referenceComparisonReports = [:]
       referenceRunStatusByFamily = [:]

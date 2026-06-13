@@ -73,8 +73,12 @@ extension GooseAppModel {
   }
 
   func applyHeartRateTimelineSnapshot(_ snapshot: HeartRateTimelineSnapshot) {
-    heartRateHourlyRanges = snapshot.ranges
-    heartRateStorageStatus = snapshot.status
+    if heartRateHourlyRanges != snapshot.ranges {
+      heartRateHourlyRanges = snapshot.ranges
+    }
+    if heartRateStorageStatus != snapshot.status {
+      heartRateStorageStatus = snapshot.status
+    }
   }
 
   func handleBLEConnectionStateChange(_ state: String) {

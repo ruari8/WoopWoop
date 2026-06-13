@@ -12,7 +12,7 @@ struct GooseSwiftApp: App {
 
   var body: some Scene {
     WindowGroup {
-      RootView()
+      RootView(model: model)
         .environmentObject(model)
         .environmentObject(model.packetMonitor)
         .environmentObject(model.ble.messageStore)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AppShellView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
   @EnvironmentObject private var router: AppRouter
   @StateObject private var healthStore = HealthDataStore()
   @State private var homeHealthPath: [HealthRoute] = []
@@ -10,7 +10,7 @@ struct AppShellView: View {
   var body: some View {
     TabView(selection: tabSelection) {
       ForEach(GooseAppTab.allCases) { tab in
-        tabNavigationStack(for: tab)
+        tabNavigationStack(for: tab, isActive: router.selectedTab == tab)
         .tabItem {
           Label(tab.title, systemImage: tab.systemImage)
         }
@@ -33,44 +33,64 @@ struct AppShellView: View {
   }
 
   @ViewBuilder
-  private func tabNavigationStack(for tab: GooseAppTab) -> some View {
+  private func tabNavigationStack(for tab: GooseAppTab, isActive: Bool) -> some View {
     if tab == .home {
       NavigationStack(path: $homeHealthPath) {
-        tabContent(for: tab)
+        tabContent(for: tab, isActive: isActive)
           .navigationDestination(for: HealthRoute.self) { route in
-            HealthRouteDestinationView(route: route, store: healthStore, selectedDate: $homeSelectedDate)
+            HealthRouteDestinationView(
+              route: route,
+              store: healthStore,
+              ble: model.ble,
+              liveVitals: model.ble.liveVitals,
+              activitySession: model.activitySession,
+              selectedDate: $homeSelectedDate,
+              recordUIAction: model.recordUIAction
+            )
           }
       }
     } else if tab == .health {
       NavigationStack(path: $router.healthPath) {
-        tabContent(for: tab)
+        tabContent(for: tab, isActive: isActive)
       }
     } else if tab == .more {
       NavigationStack(path: $router.morePath) {
-        tabContent(for: tab)
+        tabContent(for: tab, isActive: isActive)
       }
     } else {
       NavigationStack {
-        tabContent(for: tab)
+        tabContent(for: tab, isActive: isActive)
       }
     }
   }
 
   @ViewBuilder
-  private func tabContent(for tab: GooseAppTab) -> some View {
-    switch tab {
-    case .home:
-      HomeDashboardView(
-        healthStore: healthStore,
-        selectedDate: $homeSelectedDate,
-        openHealthRoute: openHomeHealthRoute
-      )
-    case .health:
-      HealthView(store: healthStore)
-    case .coach:
-      CoachView(healthStore: healthStore)
-    case .more:
-      MoreView(healthStore: healthStore)
+  private func tabContent(for tab: GooseAppTab, isActive: Bool) -> some View {
+    if isActive {
+      switch tab {
+      case .home:
+        HomeDashboardView(
+          model: model,
+          connectionStatus: model.ble.connectionStatus,
+          activityTimeline: model.homeActivityTimeline,
+          healthStore: healthStore,
+          selectedDate: $homeSelectedDate,
+          openHealthRoute: openHomeHealthRoute
+        )
+      case .health:
+        HealthView(model: model, liveVitals: model.ble.liveVitals, store: healthStore)
+      case .coach:
+        CoachView(model: model, liveVitals: model.ble.liveVitals, healthStore: healthStore)
+      case .more:
+        MoreView(
+          model: model,
+          ble: model.ble,
+          connectionStatus: model.ble.connectionStatus,
+          healthStore: healthStore
+        )
+      }
+    } else {
+      Color.clear
     }
   }
 

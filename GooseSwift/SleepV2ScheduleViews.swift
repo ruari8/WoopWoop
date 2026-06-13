@@ -83,7 +83,7 @@ struct SleepV2SleepWindowCard: View {
 
 struct SleepV2BandSyncCard: View {
   @ObservedObject var store: HealthDataStore
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
   let palette: SleepV2Palette
   let onSync: () -> Void
 
@@ -113,7 +113,7 @@ struct SleepV2BandSyncCard: View {
         SleepV2BandSyncRow(
           palette: palette,
           title: "History",
-          value: ble.historicalSyncStatus,
+          value: historicalSync.status,
           systemImage: "arrow.triangle.2.circlepath"
         )
         Divider().overlay(palette.separator).padding(.leading, 42)
@@ -138,10 +138,10 @@ struct SleepV2BandSyncCard: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(!ble.canSyncHistorical)
+        .disabled(!historicalSync.canSyncHistorical)
 
         Button {
-          store.refreshSleepAfterBandSync(packetCount: ble.historicalPacketCount)
+          store.refreshSleepAfterBandSync(packetCount: historicalSync.packetCount)
         } label: {
           Label("Refresh score", systemImage: "chart.xyaxis.line")
             .frame(maxWidth: .infinity)
@@ -163,14 +163,14 @@ struct SleepV2BandSyncCard: View {
   }
 
   private var syncSubtitle: String {
-    if ble.canSyncHistorical {
+    if historicalSync.canSyncHistorical {
       return "Pulls overnight packets from the connected band, then recomputes sleep locally."
     }
     return "Connect the band and wait for ready state to pull overnight packets."
   }
 
   private var packetText: String {
-    ble.historicalPacketCount == 1 ? "1 packet" : "\(ble.historicalPacketCount) packets"
+    historicalSync.packetText
   }
 }
 
@@ -540,4 +540,3 @@ struct SleepV2ClockBubble: View {
       .background(Circle().fill(active ? palette.accent : palette.surfaceHeader.opacity(0.74)))
   }
 }
-

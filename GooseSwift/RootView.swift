@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
   @AppStorage(OnboardingStorage.onboardingComplete) private var onboardingComplete = false
   @AppStorage(OnboardingStorage.onboardingRedoRequested) private var onboardingRedoRequested = false
 
@@ -9,7 +9,7 @@ struct RootView: View {
     ZStack(alignment: .top) {
       Group {
         if onboardingComplete {
-          AppShellView()
+          AppShellView(model: model)
         } else {
           OnboardingView {
             onboardingRedoRequested = false
@@ -18,7 +18,7 @@ struct RootView: View {
           }
         }
       }
-      SyncToastHost(ble: model.ble)
+      SyncToastHost(syncStatus: model.ble.syncStatus)
     }
     .gooseScreenBackground()
     .onAppear {
@@ -61,14 +61,14 @@ struct RootView: View {
 }
 
 private struct SyncToastHost: View {
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var syncStatus: GooseSyncStatusStore
 
   var body: some View {
     VStack {
-      if let toast = ble.syncToast {
+      if let toast = syncStatus.syncToast {
         Button {
-          if toast.phase == .failed, let failure = ble.lastSyncFailure {
-            ble.syncFailureSheet = failure
+          if toast.phase == .failed, let failure = syncStatus.lastSyncFailure {
+            syncStatus.syncFailureSheet = failure
           }
         } label: {
           SyncStatusToastView(toast: toast)
@@ -85,9 +85,9 @@ private struct SyncToastHost: View {
       Spacer(minLength: 0)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .allowsHitTesting(ble.syncToast?.phase == .failed)
-    .animation(.spring(response: 0.34, dampingFraction: 0.86), value: ble.syncToast?.id)
-    .sheet(item: $ble.syncFailureSheet) { failure in
+    .allowsHitTesting(syncStatus.syncToast?.phase == .failed)
+    .animation(.spring(response: 0.34, dampingFraction: 0.86), value: syncStatus.syncToast?.id)
+    .sheet(item: $syncStatus.syncFailureSheet) { failure in
       SyncFailureSheet(failure: failure)
     }
   }
@@ -182,7 +182,7 @@ private struct SyncToastIcon: View {
 
   var body: some View {
     if isSyncing && !reduceMotion {
-      TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+      TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
         symbol(rotationDegrees: rotationDegrees(for: context.date))
       }
     } else {

@@ -17,10 +17,11 @@ struct HealthPreviewRouteHost: View {
 }
 
 #Preview("Health Landing") {
+  let model = GooseAppModel(startBLE: false)
   NavigationStack {
-    HealthView(store: HealthDataStore())
+    HealthView(model: model, liveVitals: model.ble.liveVitals, store: HealthDataStore())
   }
-  .environmentObject(GooseAppModel(startBLE: false))
+  .environmentObject(model)
 }
 
 #Preview("Health Monitor - Populated") {

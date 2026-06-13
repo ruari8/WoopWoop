@@ -1,73 +1,87 @@
 import SwiftUI
 
 struct ConnectionView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let ble: GooseBLEClient
+  let rustStatus: String
+  let helloSummary: String
 
   var body: some View {
-    ConnectionContentView(ble: model.ble)
-      .environmentObject(model)
+    ConnectionContentView(
+      ble: ble,
+      connectionStatus: ble.connectionStatus,
+      historicalSync: ble.historicalSyncStatusStore,
+      liveVitals: ble.liveVitals,
+      rustStatus: rustStatus,
+      helloSummary: helloSummary
+    )
   }
 }
 
 private struct ConnectionContentView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  private static let maximumVisibleEventMessages = 80
+
   @EnvironmentObject private var messageStore: GooseMessageStore
-  @ObservedObject var ble: GooseBLEClient
+  let ble: GooseBLEClient
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
+  let rustStatus: String
+  let helloSummary: String
 
   var body: some View {
     List {
       Section("Status") {
-        LabeledContent("Bluetooth", value: ble.bluetoothState)
-        LabeledContent("Connection", value: ble.connectionState)
-        LabeledContent("Reconnect", value: ble.reconnectState)
+        LabeledContent("Bluetooth", value: connectionStatus.bluetoothState)
+        LabeledContent("Connection", value: connectionStatus.connectionState)
+        LabeledContent("Reconnect", value: connectionStatus.reconnectState)
         LabeledContent("Historical", value: historicalSyncValue)
-        LabeledContent("Remembered", value: ble.rememberedDeviceDescription)
+        LabeledContent("Remembered", value: connectionStatus.rememberedDeviceDescription)
         LabeledContent("Live HR", value: liveHeartRateValue)
-        LabeledContent("Rust", value: model.rustStatus)
-        LabeledContent("Hello", value: model.helloSummary)
+        LabeledContent("Rust", value: rustStatus)
+        LabeledContent("Hello", value: helloSummary)
       }
 
       Section("Actions") {
         Button("Request Bluetooth") {
           ble.requestBluetooth()
         }
-        Button(ble.isScanning ? "Stop Scan" : "Scan") {
-          ble.isScanning ? ble.stopScan() : ble.startScan()
+        Button(connectionStatus.isScanning ? "Stop Scan" : "Scan") {
+          connectionStatus.isScanning ? ble.stopScan() : ble.startScan()
         }
-        .disabled(!ble.canScan)
+        .disabled(!connectionStatus.canScan)
 
         Button("Connect Selected") {
           ble.connectSelected()
         }
-        .disabled(!ble.canConnect)
+        .disabled(!connectionStatus.canConnect)
 
         Button("Reconnect Remembered") {
           ble.reconnectRemembered()
         }
-        .disabled(!ble.canReconnectRemembered)
+        .disabled(!connectionStatus.canReconnectRemembered)
 
         Button("Send Client Hello") {
           ble.sendClientHello()
         }
-        .disabled(!ble.canSendHello)
+        .disabled(!connectionStatus.canSendHello)
 
-        Button(ble.isHistoricalSyncing ? "Syncing Historical Packets" : "Request Historical Packets") {
+        Button(historicalSync.isSyncing ? "Syncing Historical Packets" : "Request Historical Packets") {
           ble.syncHistoricalPackets()
         }
-        .disabled(!ble.canSyncHistorical)
+        .disabled(!historicalSync.canSyncHistorical)
 
         Button("Forget Remembered Device", role: .destructive) {
           ble.forgetRememberedDevice()
         }
-        .disabled(!ble.hasRememberedDevice)
+        .disabled(!connectionStatus.hasRememberedDevice)
       }
 
       Section("Discovered") {
-        if ble.discoveredDevices.isEmpty {
+        if connectionStatus.discoveredDevices.isEmpty {
           Text("No devices yet")
             .foregroundStyle(.secondary)
         } else {
-          ForEach(ble.discoveredDevices) { device in
+          ForEach(connectionStatus.discoveredDevices) { device in
             Button {
               ble.select(device)
             } label: {
@@ -94,7 +108,7 @@ private struct ConnectionContentView: View {
       }
 
       Section("Event Log") {
-        ForEach(messageStore.messages) { message in
+        ForEach(visibleMessages) { message in
           VStack(alignment: .leading, spacing: 4) {
             HStack {
               Text(message.timestamp, style: .time)
@@ -115,31 +129,41 @@ private struct ConnectionContentView: View {
               .textSelection(.enabled)
           }
         }
+
+        if messageStore.messages.count > Self.maximumVisibleEventMessages {
+          Text("Showing latest \(Self.maximumVisibleEventMessages) of \(messageStore.messages.count) events")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       }
     }
     .gooseListBackground()
     .navigationTitle("Connect")
   }
 
+  private var visibleMessages: ArraySlice<GooseMessage> {
+    messageStore.messages.prefix(Self.maximumVisibleEventMessages)
+  }
+
   private var liveHeartRateValue: String {
-    guard let bpm = ble.liveHeartRateBPM else {
-      return ble.liveHeartRateSource
+    guard let bpm = liveVitals.liveHeartRateBPM else {
+      return liveVitals.liveHeartRateSource
     }
-    if let updatedAt = ble.liveHeartRateUpdatedAt {
-      return "\(bpm) bpm via \(ble.liveHeartRateSource) @ \(updatedAt.formatted(date: .omitted, time: .standard))"
+    if let updatedAt = liveVitals.liveHeartRateUpdatedAt {
+      return "\(bpm) bpm via \(liveVitals.liveHeartRateSource) @ \(updatedAt.formatted(date: .omitted, time: .standard))"
     }
-    return "\(bpm) bpm via \(ble.liveHeartRateSource)"
+    return "\(bpm) bpm via \(liveVitals.liveHeartRateSource)"
   }
 
   private var historicalSyncValue: String {
-    let packetCount = ble.historicalPacketCount
+    let packetCount = historicalSync.packetCount
     let packets = "\(packetCount) \(packetCount == 1 ? "packet" : "packets")"
-    if ble.isHistoricalSyncing {
+    if historicalSync.isSyncing {
       return "syncing | \(packets)"
     }
-    if let completedAt = ble.lastHistoricalSyncCompletedAt {
-      return "\(ble.historicalSyncStatus) | \(packets) @ \(completedAt.formatted(date: .omitted, time: .standard))"
+    if let completedAt = historicalSync.completedAt {
+      return "\(historicalSync.status) | \(packets) @ \(completedAt.formatted(date: .omitted, time: .standard))"
     }
-    return "\(ble.historicalSyncStatus) | \(packets)"
+    return "\(historicalSync.status) | \(packets)"
   }
 }

@@ -121,6 +121,8 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
   private var postCloseStatusRefresh = false
   private var fileMetricsRecomputedAt: Date?
   private var compactRawNotificationCountsByKey: [String: Int] = [:]
+  private let activeStateLock = NSLock()
+  private var activeState = false
   private let processLaunchID = UUID().uuidString
   private let processLaunchStartedAt = Date()
 
@@ -208,8 +210,10 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
         self.compactRawNotificationCountsByKey = [:]
         try writeManifestLocked(status: "active")
         writeStatusLocked(lines: ["status=active"])
+        self.setActiveState(true)
         result = .success(snapshotLocked())
       } catch {
+        self.setActiveState(false)
         self.lastError = String(describing: error)
         result = .failure(error)
       }
@@ -321,8 +325,10 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
         self.compactRawNotificationCountsByKey = [:]
         try writeManifestLocked(status: "active")
         writeStatusLocked(lines: ["status=active", "active=true", "resumed=true"])
+        self.setActiveState(true)
         result = .success(snapshotLocked())
       } catch {
+        self.setActiveState(false)
         self.lastError = String(describing: error)
         result = .failure(error)
       }
@@ -594,6 +600,7 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
       commandWritesHandle = nil
       eventLogHandle = nil
       handlesClosed = true
+      setActiveState(false)
       recomputeFileMetricsLocked(reason: "suspend")
       postCloseStatusRefresh = true
       writeStatusLocked(lines: [
@@ -618,13 +625,21 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
   }
 
   var isActive: Bool {
-    queue.sync {
-      handle != nil
-    }
+    activeStateLock.lock()
+    let result = activeState
+    activeStateLock.unlock()
+    return result
+  }
+
+  private func setActiveState(_ isActive: Bool) {
+    activeStateLock.lock()
+    activeState = isActive
+    activeStateLock.unlock()
   }
 
   private func finishLocked(status: String, summary: [String: Any] = [:]) {
     guard handle != nil || sessionID != nil else {
+      setActiveState(false)
       return
     }
     endedAt = Date()
@@ -666,6 +681,7 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
     writeCheckpointLocked(reason: "finish_\(status)", force: true)
     closeHandleLocked(checkpointHandle, label: "checkpoint final close")
     checkpointHandle = nil
+    setActiveState(false)
   }
 
   @discardableResult
@@ -1154,4 +1170,3 @@ final class OvernightRawNotificationSpool: @unchecked Sendable {
     )
   }
 }
-

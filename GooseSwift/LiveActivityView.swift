@@ -4,15 +4,14 @@ import SwiftUI
 import UIKit
 
 struct LiveActivityView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
 
   var body: some View {
     LiveActivityContentView(
-      ble: model.ble,
+      model: model,
+      liveVitals: model.ble.liveVitals,
       session: model.activitySession,
       locationTracker: model.activityLocationTracker
     )
-    .environmentObject(model)
   }
 }
-

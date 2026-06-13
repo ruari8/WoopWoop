@@ -4,7 +4,8 @@ import SwiftUI
 import UIKit
 
 struct HealthView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
+  let liveVitals: GooseLiveVitalsStore
   @ObservedObject var store: HealthDataStore
 
   var body: some View {
@@ -15,17 +16,7 @@ struct HealthView: View {
           usesSampleData: store.usesSampleData
         )
 
-        HealthActivityOverviewSection(
-          steps: store.whoopStepsDisplayText(),
-          activeEnergy: store.whoopActiveCaloriesDisplayText(),
-          stepsFreshness: store.whoopStepsStatusText(),
-          stepsSource: store.whoopStepsSource(),
-          activeEnergyFreshness: store.whoopActiveCaloriesStatusText(),
-          activeEnergySource: store.whoopActiveCaloriesSource(),
-          heartRateValue: liveHeartRateValue,
-          heartRateStatus: liveHeartRateStatus,
-          heartRateSource: liveHeartRateSource
-        )
+        HealthActivityOverviewContainer(store: store, liveVitals: liveVitals)
 
         HealthVitalsPreviewSection(snapshots: vitalSnapshots)
 
@@ -47,7 +38,14 @@ struct HealthView: View {
     .navigationBarTitleDisplayMode(.inline)
     .toolbarBackground(.hidden, for: .navigationBar)
     .navigationDestination(for: HealthRoute.self) { route in
-      HealthRouteContentView(route: route, store: store)
+      HealthRouteContentView(
+        route: route,
+        store: store,
+        ble: model.ble,
+        liveVitals: liveVitals,
+        activitySession: model.activitySession,
+        recordUIAction: model.recordUIAction
+      )
     }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
@@ -69,34 +67,14 @@ struct HealthView: View {
   private var landingSnapshots: [HealthMetricSnapshot] {
     store
       .landingSnapshots(
-        liveHeartRateBPM: model.ble.liveHeartRateBPM,
-        liveHeartRateSource: model.ble.liveHeartRateSource,
-        liveHeartRateUpdatedAt: model.ble.liveHeartRateUpdatedAt
+        liveHeartRateBPM: nil,
+        liveHeartRateSource: "health dashboard stable route snapshots",
+        liveHeartRateUpdatedAt: nil
       )
   }
 
   private var vitalSnapshots: [HealthMetricSnapshot] {
     Array(store.healthMonitorSnapshots().prefix(4))
-  }
-
-  private var liveHeartRateValue: String {
-    guard let bpm = model.ble.liveHeartRateBPM else {
-      return "--"
-    }
-    return "\(bpm) bpm"
-  }
-
-  private var liveHeartRateStatus: String {
-    guard model.ble.liveHeartRateBPM != nil else {
-      return store.heartRateTimelineStatus
-    }
-    return HealthDataStore.relativeText(for: model.ble.liveHeartRateUpdatedAt) ?? "Live"
-  }
-
-  private var liveHeartRateSource: HealthDataSource {
-    model.ble.liveHeartRateBPM == nil
-      ? .unavailable("BLE heart-rate stream waiting")
-      : .live(model.ble.liveHeartRateSource)
   }
 
   private func snapshots(for routes: [HealthRoute]) -> [HealthMetricSnapshot] {
@@ -110,5 +88,44 @@ struct HealthView: View {
     store.refreshBridgeCatalogs()
     store.refreshHeartRateTimeline()
     store.refreshPacketInputsIfNeeded()
+  }
+}
+
+private struct HealthActivityOverviewContainer: View {
+  @ObservedObject var store: HealthDataStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
+
+  var body: some View {
+    HealthActivityOverviewSection(
+      steps: store.whoopStepsDisplayText(),
+      activeEnergy: store.whoopActiveCaloriesDisplayText(),
+      stepsFreshness: store.whoopStepsStatusText(),
+      stepsSource: store.whoopStepsSource(),
+      activeEnergyFreshness: store.whoopActiveCaloriesStatusText(),
+      activeEnergySource: store.whoopActiveCaloriesSource(),
+      heartRateValue: liveHeartRateValue,
+      heartRateStatus: liveHeartRateStatus,
+      heartRateSource: liveHeartRateSource
+    )
+  }
+
+  private var liveHeartRateValue: String {
+    guard let bpm = liveVitals.liveHeartRateBPM else {
+      return "--"
+    }
+    return "\(bpm) bpm"
+  }
+
+  private var liveHeartRateStatus: String {
+    guard liveVitals.liveHeartRateBPM != nil else {
+      return store.heartRateTimelineStatus
+    }
+    return HealthDataStore.relativeText(for: liveVitals.liveHeartRateUpdatedAt) ?? "Live"
+  }
+
+  private var liveHeartRateSource: HealthDataSource {
+    liveVitals.liveHeartRateBPM == nil
+      ? .unavailable("BLE heart-rate stream waiting")
+      : .live(liveVitals.liveHeartRateSource)
   }
 }

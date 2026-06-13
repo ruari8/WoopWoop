@@ -670,7 +670,7 @@ extension MoreDataStore {
     return rows
   }
 
-  static func captureSessionSummaries(from dictionary: [String: Any]) -> [String] {
+  nonisolated static func captureSessionSummaries(from dictionary: [String: Any]) -> [String] {
     let arrays = ["sessions", "capture_sessions", "items"].compactMap { dictionary[$0] as? [[String: Any]] }
     guard let sessions = arrays.first, !sessions.isEmpty else {
       return ["No stored capture sessions"]

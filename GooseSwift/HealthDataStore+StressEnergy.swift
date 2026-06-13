@@ -3,23 +3,59 @@ import Foundation
 import SwiftUI
 import UIKit
 
+private struct StressHeartRateBucket {
+  var totalBPM = 0
+  var minBPM = Int.max
+  var maxBPM = Int.min
+  var sampleCount = 0
+
+  mutating func append(_ bpm: Int) {
+    totalBPM += bpm
+    minBPM = min(minBPM, bpm)
+    maxBPM = max(maxBPM, bpm)
+    sampleCount += 1
+  }
+}
+
 extension HealthDataStore {
   func stressAlgorithmSummary(
     for date: Date = Date(),
     calendar: Calendar = .current,
     allowLiveFallbacks: Bool = true
   ) -> StressAlgorithmSummary {
+    if allowLiveFallbacks,
+       calendar.isDate(currentStressEnergySummaryDayStart, inSameDayAs: date) {
+      return currentStressSummary
+    }
+    let samples = heartRateSeriesStore.samples(forDayContaining: date, calendar: calendar)
+    return Self.computeStressAlgorithmSummary(
+      samples: samples,
+      date: date,
+      calendar: calendar,
+      previewMissingData: previewMissingData,
+      heartRateTimelineStatus: heartRateTimelineStatus,
+      allowLiveFallbacks: allowLiveFallbacks
+    )
+  }
+
+  nonisolated static func computeStressAlgorithmSummary(
+    samples: [HeartRateSamplePoint],
+    date: Date = Date(),
+    calendar: Calendar = .current,
+    previewMissingData: Bool = false,
+    heartRateTimelineStatus: String,
+    allowLiveFallbacks: Bool = true
+  ) -> StressAlgorithmSummary {
     guard !previewMissingData else {
-      return emptyStressSummary(
+      return emptyStressSummaryValue(
         status: "No data",
         freshness: "Missing",
         source: .unavailable("preview missing stress data")
       )
     }
 
-    let samples = heartRateSeriesStore.samples(forDayContaining: date, calendar: calendar)
     guard samples.count >= 6 else {
-      return emptyStressSummary(
+      return emptyStressSummaryValue(
         status: "No HR data",
         freshness: heartRateTimelineStatus,
         source: .unavailable("stress requires at least six heart-rate samples today")
@@ -28,27 +64,31 @@ extension HealthDataStore {
 
     let dayStart = calendar.startOfDay(for: date)
     let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(24 * 60 * 60)
-    let restingHeartRate = stressRestingHeartRateEstimate(
+    let restingHeartRate = Self.stressRestingHeartRateEstimate(
       samples: samples,
       date: date,
       calendar: calendar,
       allowLiveFallbacks: allowLiveFallbacks
     )
     let bucketSeconds: TimeInterval = 10 * 60
-    let grouped = Dictionary(grouping: samples) { sample in
-      Int(max(sample.capturedAt.timeIntervalSince(dayStart), 0) / bucketSeconds)
+    let bucketCount = max(1, Int(ceil(dayEnd.timeIntervalSince(dayStart) / bucketSeconds)))
+    var buckets = Array(repeating: StressHeartRateBucket(), count: bucketCount)
+    for sample in samples {
+      let bucket = Int(max(sample.capturedAt.timeIntervalSince(dayStart), 0) / bucketSeconds)
+      guard buckets.indices.contains(bucket) else {
+        continue
+      }
+      buckets[bucket].append(sample.bpm)
     }
 
-    let windows = grouped
-      .sorted { $0.key < $1.key }
+    let windows = buckets.enumerated()
       .compactMap { bucket, bucketSamples -> StressWindowPoint? in
-        guard !bucketSamples.isEmpty else {
+        guard bucketSamples.sampleCount > 0 else {
           return nil
         }
-        let values = bucketSamples.map(\.bpm)
-        let averageHeartRate = Double(values.reduce(0, +)) / Double(values.count)
-        let minHeartRate = Double(values.min() ?? Int(averageHeartRate.rounded()))
-        let maxHeartRate = Double(values.max() ?? Int(averageHeartRate.rounded()))
+        let averageHeartRate = Double(bucketSamples.totalBPM) / Double(bucketSamples.sampleCount)
+        let minHeartRate = Double(bucketSamples.minBPM)
+        let maxHeartRate = Double(bucketSamples.maxBPM)
         let heartRatePressure = Self.clamp(
           (averageHeartRate - restingHeartRate) / max(32.0, restingHeartRate * 0.62),
           min: 0,
@@ -78,13 +118,13 @@ extension HealthDataStore {
           timeLabel: Self.timeLabel(start),
           stress: stress,
           averageHeartRate: averageHeartRate,
-          sampleCount: bucketSamples.count,
+          sampleCount: bucketSamples.sampleCount,
           isSleepWindow: sleepWindow
         )
       }
 
     guard !windows.isEmpty else {
-      return emptyStressSummary(
+      return emptyStressSummaryValue(
         status: "No HR data",
         freshness: heartRateTimelineStatus,
         source: .unavailable("stress buckets could not be computed")
@@ -131,16 +171,29 @@ extension HealthDataStore {
     calendar: Calendar = .current,
     allowLiveFallbacks: Bool = true
   ) -> EnergyBankAlgorithmSummary {
+    if allowLiveFallbacks,
+       calendar.isDate(currentStressEnergySummaryDayStart, inSameDayAs: date) {
+      return currentEnergyBankSummary
+    }
     let stress = stressAlgorithmSummary(for: date, calendar: calendar, allowLiveFallbacks: allowLiveFallbacks)
+    return Self.computeEnergyBankAlgorithmSummary(
+      stress: stress,
+      recoverySeed: recoveryScoreValue()
+    )
+  }
+
+  nonisolated static func computeEnergyBankAlgorithmSummary(
+    stress: StressAlgorithmSummary,
+    recoverySeed: Double?
+  ) -> EnergyBankAlgorithmSummary {
     guard stress.hasData else {
-      return emptyEnergyBankSummary(
+      return emptyEnergyBankSummaryValue(
         status: "No stress data",
         freshness: stress.freshness,
         source: stress.source
       )
     }
 
-    let recoverySeed = recoveryScoreValue()
     var energy = Self.clamp(recoverySeed ?? 55, min: 5, max: 100)
     var points: [EnergyStressPoint] = []
     var totalCharged = 0.0
@@ -268,6 +321,14 @@ extension HealthDataStore {
     freshness: String,
     source: HealthDataSource
   ) -> StressAlgorithmSummary {
+    Self.emptyStressSummaryValue(status: status, freshness: freshness, source: source)
+  }
+
+  nonisolated static func emptyStressSummaryValue(
+    status: String,
+    freshness: String,
+    source: HealthDataSource
+  ) -> StressAlgorithmSummary {
     StressAlgorithmSummary(
       score: nil,
       status: status,
@@ -290,6 +351,14 @@ extension HealthDataStore {
     freshness: String,
     source: HealthDataSource
   ) -> EnergyBankAlgorithmSummary {
+    Self.emptyEnergyBankSummaryValue(status: status, freshness: freshness, source: source)
+  }
+
+  nonisolated static func emptyEnergyBankSummaryValue(
+    status: String,
+    freshness: String,
+    source: HealthDataSource
+  ) -> EnergyBankAlgorithmSummary {
     EnergyBankAlgorithmSummary(
       percent: nil,
       status: status,
@@ -304,16 +373,15 @@ extension HealthDataStore {
     )
   }
 
-  func stressRestingHeartRateEstimate(
+  nonisolated static func stressRestingHeartRateEstimate(
     samples: [HeartRateSamplePoint],
     date: Date,
     calendar: Calendar,
     allowLiveFallbacks: Bool = true
   ) -> Double {
-    if let storeEstimate = heartRateSeriesStore.restingEstimate(forDayContaining: date, calendar: calendar)?.bpm {
-      return storeEstimate
-    }
-    if allowLiveFallbacks, let liveEstimate = Self.liveHRDerivedRestingHeartRateSample()?.bpm {
+    if samples.count < 12,
+       allowLiveFallbacks,
+       let liveEstimate = Self.liveHRDerivedRestingHeartRateSample()?.bpm {
       return liveEstimate
     }
     let values = samples.map(\.bpm).sorted()

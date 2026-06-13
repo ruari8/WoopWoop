@@ -7,7 +7,7 @@ struct FitnessLiveWorkoutView: View {
   @Binding var selectedPage: FitnessWorkoutPage
   let activity: ActivityKind
   @ObservedObject var session: ActivitySessionModel
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @ObservedObject var locationTracker: ActivityLocationTracker
   let segmentNumber: Int
   @Binding var dockExpanded: Bool
@@ -39,7 +39,7 @@ struct FitnessLiveWorkoutView: View {
           selectedPage: $selectedPage,
           activity: activity,
           session: session,
-          ble: ble,
+          liveVitals: liveVitals,
           locationTracker: locationTracker,
           segmentNumber: segmentNumber
         )
@@ -131,7 +131,7 @@ struct FitnessPageCarousel: View {
   @Binding var selectedPage: FitnessWorkoutPage
   let activity: ActivityKind
   @ObservedObject var session: ActivitySessionModel
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @ObservedObject var locationTracker: ActivityLocationTracker
   let segmentNumber: Int
 
@@ -155,7 +155,7 @@ struct FitnessPageCarousel: View {
     case .overview:
       FitnessOverviewPage(
         activity: activity,
-        currentHeartRate: ble.liveHeartRateBPM,
+        currentHeartRate: liveVitals.liveHeartRateBPM,
         averageHeartRate: session.averageHeartRate,
         elapsed: session.elapsed,
         distanceMeters: locationTracker.distanceMeters,
@@ -164,7 +164,7 @@ struct FitnessPageCarousel: View {
       )
     case .heartRate:
       FitnessHeartRatePage(
-        currentHeartRate: ble.liveHeartRateBPM,
+        currentHeartRate: liveVitals.liveHeartRateBPM,
         averageHeartRate: session.averageHeartRate,
         zoneDurations: session.zoneDurations,
         elapsed: session.elapsed
@@ -176,7 +176,7 @@ struct FitnessPageCarousel: View {
         usesGPS: activity.usesGPS,
         elapsed: session.elapsed,
         distanceMeters: locationTracker.distanceMeters,
-        currentHeartRate: ble.liveHeartRateBPM,
+        currentHeartRate: liveVitals.liveHeartRateBPM,
         currentPace: locationTracker.currentPaceSecondsPerKilometer
       )
     case .split:
@@ -185,7 +185,7 @@ struct FitnessPageCarousel: View {
         usesGPS: activity.usesGPS,
         elapsed: session.elapsed,
         distanceMeters: locationTracker.distanceMeters,
-        currentHeartRate: ble.liveHeartRateBPM,
+        currentHeartRate: liveVitals.liveHeartRateBPM,
         currentPace: locationTracker.currentPaceSecondsPerKilometer
       )
     case .elevation:
@@ -535,4 +535,3 @@ struct FitnessRingsPage: View {
     min(12, max(1, Int(elapsed / 3600) + 9))
   }
 }
-

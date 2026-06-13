@@ -21,18 +21,31 @@ final class HealthDataStore: ObservableObject {
   @Published var calibrationRunComplete = false
   @Published var heartRateHourlyRanges: [HeartRateHourlyRange] = []
   @Published var heartRateTimelineStatus = "No HR samples stored"
+  @Published var currentStressSummary = HealthDataStore.emptyStressSummaryValue(
+    status: "No HR data",
+    freshness: "No HR samples stored",
+    source: .unavailable("stress requires heart-rate samples")
+  )
+  @Published var currentEnergyBankSummary = HealthDataStore.emptyEnergyBankSummaryValue(
+    status: "No stress data",
+    freshness: "No HR samples stored",
+    source: .unavailable("energy bank requires stress windows")
+  )
 
   let bridge = GooseRustBridge()
   let heartRateSeriesStore = HeartRateSeriesStore.shared
   var attemptedCatalogLoad = false
   var previewMissingData = false
   var packetInputReports: [String: [String: Any]] = [:]
+  var safePacketMetricRowsByReport: [String: [[String: Any]]] = [:]
+  var preferredDailyRecoveryUnavailableMetricByCacheKey: [String: [String: Any]] = [:]
   var packetScoreReports: [String: [String: Any]] = [:]
   var referenceComparisonReports: [String: [String: Any]] = [:]
   var packetInputRefreshWorkItem: DispatchWorkItem?
   var packetInputRunID: UUID?
   var packetInputIsRunning = false
   var heartRateTimelineRefreshID: UUID?
+  var currentStressEnergySummaryDayStart = Calendar.current.startOfDay(for: Date())
   var heartRateSeriesUpdateObserver: NSObjectProtocol?
   let packetInputQueue = DispatchQueue(label: "com.goose.swift.health.packet-inputs", qos: .utility)
   let heartRateTimelineQueue = DispatchQueue(label: "com.goose.swift.health.heart-rate-timeline", qos: .utility)
@@ -40,15 +53,15 @@ final class HealthDataStore: ObservableObject {
   var catalogRefreshInFlight = false
   lazy var databasePath = HealthDataStore.defaultDatabasePath()
 
-  static let liveHRVRMSSDDefaultsKey = "goose.swift.liveHRVRMSSD"
-  static let liveHRVRRIntervalCountDefaultsKey = "goose.swift.liveHRVRRIntervalCount"
-  static let liveHRVRMSSDSampleCountDefaultsKey = "goose.swift.liveHRVRMSSDSampleCount"
-  static let liveHRVUpdatedAtDefaultsKey = "goose.swift.liveHRVUpdatedAt"
-  static let liveHRVSourceDefaultsKey = "goose.swift.liveHRVSource"
-  static let restingHeartRateEstimateBPMDefaultsKey = "goose.swift.restingHeartRateEstimateBPM"
-  static let restingHeartRateEstimateSampleCountDefaultsKey = "goose.swift.restingHeartRateEstimateSampleCount"
-  static let restingHeartRateEstimateUpdatedAtDefaultsKey = "goose.swift.restingHeartRateEstimateUpdatedAt"
-  static let restingHeartRateEstimateSourceDefaultsKey = "goose.swift.restingHeartRateEstimateSource"
+  nonisolated static let liveHRVRMSSDDefaultsKey = "goose.swift.liveHRVRMSSD"
+  nonisolated static let liveHRVRRIntervalCountDefaultsKey = "goose.swift.liveHRVRRIntervalCount"
+  nonisolated static let liveHRVRMSSDSampleCountDefaultsKey = "goose.swift.liveHRVRMSSDSampleCount"
+  nonisolated static let liveHRVUpdatedAtDefaultsKey = "goose.swift.liveHRVUpdatedAt"
+  nonisolated static let liveHRVSourceDefaultsKey = "goose.swift.liveHRVSource"
+  nonisolated static let restingHeartRateEstimateBPMDefaultsKey = "goose.swift.restingHeartRateEstimateBPM"
+  nonisolated static let restingHeartRateEstimateSampleCountDefaultsKey = "goose.swift.restingHeartRateEstimateSampleCount"
+  nonisolated static let restingHeartRateEstimateUpdatedAtDefaultsKey = "goose.swift.restingHeartRateEstimateUpdatedAt"
+  nonisolated static let restingHeartRateEstimateSourceDefaultsKey = "goose.swift.restingHeartRateEstimateSource"
 
   init() {
     algorithmDefinitions = []
@@ -136,15 +149,39 @@ final class HealthDataStore: ObservableObject {
     let refreshID = UUID()
     heartRateTimelineRefreshID = refreshID
     let store = heartRateSeriesStore
+    let previewMissingData = previewMissingData
+    let recoverySeed = recoveryScoreValue()
+    let calendar = Calendar.current
+    let dayStart = calendar.startOfDay(for: date)
     heartRateTimelineQueue.async { [weak self] in
-      let snapshot = store.timelineSnapshot(forDayContaining: date)
+      let snapshot = store.timelineSnapshot(forDayContaining: date, calendar: calendar)
+      let samples = store.samples(forDayContaining: date, calendar: calendar)
+      let stressSummary = HealthDataStore.computeStressAlgorithmSummary(
+        samples: samples,
+        date: date,
+        calendar: calendar,
+        previewMissingData: previewMissingData,
+        heartRateTimelineStatus: snapshot.status,
+        allowLiveFallbacks: true
+      )
+      let energyBankSummary = HealthDataStore.computeEnergyBankAlgorithmSummary(
+        stress: stressSummary,
+        recoverySeed: recoverySeed
+      )
       Task { @MainActor in
         guard let self,
               self.heartRateTimelineRefreshID == refreshID else {
           return
         }
-        self.heartRateHourlyRanges = snapshot.ranges
-        self.heartRateTimelineStatus = snapshot.status
+        if self.heartRateHourlyRanges != snapshot.ranges {
+          self.heartRateHourlyRanges = snapshot.ranges
+        }
+        if self.heartRateTimelineStatus != snapshot.status {
+          self.heartRateTimelineStatus = snapshot.status
+        }
+        self.currentStressEnergySummaryDayStart = dayStart
+        self.currentStressSummary = stressSummary
+        self.currentEnergyBankSummary = energyBankSummary
       }
     }
   }
@@ -260,16 +297,40 @@ final class HealthDataStore: ObservableObject {
     let databasePath = databasePath
     packetInputStatus = "Extracting packet-derived inputs..."
 
-    packetInputQueue.async { [weak self] in
-      let result = HealthDataStore.packetInputBridgeReports(databasePath: databasePath)
+    packetInputQueue.async {
+      let result: Result<(
+        reports: [String: [String: Any]],
+        safeMetricRowsByReport: [String: [[String: Any]]],
+        preferredDailyRecoveryUnavailableMetricByCacheKey: [String: [String: Any]]
+      ), Error>
+      switch HealthDataStore.packetInputBridgeReports(databasePath: databasePath) {
+      case .success(let reports):
+        let safeMetricRowsByReport = HealthDataStore.safePacketMetricRowsByReport(from: reports)
+        let unavailableMetricsByCacheKey = HealthDataStore
+          .preferredDailyRecoveryUnavailableMetricByCacheKey(
+            from: safeMetricRowsByReport["daily_recovery"] ?? []
+          )
+        result = .success((
+          reports: reports,
+          safeMetricRowsByReport: safeMetricRowsByReport,
+          preferredDailyRecoveryUnavailableMetricByCacheKey: unavailableMetricsByCacheKey
+        ))
+      case .failure(let error):
+        result = .failure(error)
+      }
       DispatchQueue.main.async { [weak self] in
         guard let self, self.packetInputRunID == runID else {
           return
         }
         self.packetInputIsRunning = false
         switch result {
-        case .success(let reports):
-          self.packetInputReports = reports
+        case .success(let values):
+          self.applyPacketInputReports(
+            values.reports,
+            safeMetricRowsByReport: values.safeMetricRowsByReport,
+            preferredDailyRecoveryUnavailableMetricByCacheKey: values
+              .preferredDailyRecoveryUnavailableMetricByCacheKey
+          )
           self.packetInputStatus = "Bridge packet-derived inputs extracted"
         case .failure(let error):
           self.packetInputStatus = "Bridge input extraction blocked: \(HealthDataStore.shortError(error))"
@@ -277,6 +338,90 @@ final class HealthDataStore: ObservableObject {
         completion?()
       }
     }
+  }
+
+  func applyPacketInputReports(
+    _ reports: [String: [String: Any]],
+    safeMetricRowsByReport: [String: [[String: Any]]],
+    preferredDailyRecoveryUnavailableMetricByCacheKey: [String: [String: Any]] = [:]
+  ) {
+    packetInputReports = reports
+    self.safePacketMetricRowsByReport = safeMetricRowsByReport
+    self.preferredDailyRecoveryUnavailableMetricByCacheKey =
+      preferredDailyRecoveryUnavailableMetricByCacheKey
+  }
+
+  nonisolated static func safePacketMetricRowsByReport(
+    from reports: [String: [String: Any]]
+  ) -> [String: [[String: Any]]] {
+    var rowsByReport: [String: [[String: Any]]] = [:]
+    for reportKey in ["daily_recovery", "daily_activity", "hourly_activity"] {
+      let rows = Self.array(reports[reportKey]?["metrics"])
+        .filter { Self.localHealthMetricRowIsDisplaySafe($0) }
+      if !rows.isEmpty {
+        rowsByReport[reportKey] = rows
+      }
+    }
+    return rowsByReport
+  }
+
+  func safePacketMetricRows(for reportKey: String) -> [[String: Any]] {
+    safePacketMetricRowsByReport[reportKey] ?? []
+  }
+
+  nonisolated static var cachedDailyRecoveryUnavailableMetricIDs: [String] {
+    [
+      "respiratory_rate_rpm",
+      "oxygen_saturation_percent",
+      "skin_temperature_delta_c",
+      "hrv_rmssd_ms",
+    ]
+  }
+
+  nonisolated static func preferredDailyRecoveryUnavailableMetricByCacheKey(
+    from dailyRecoveryMetrics: [[String: Any]]
+  ) -> [String: [String: Any]] {
+    var metricsByCacheKey: [String: [String: Any]] = [:]
+    let metricIDs = cachedDailyRecoveryUnavailableMetricIDs
+    for metric in dailyRecoveryMetrics {
+      guard metric["source_kind"] as? String == "unavailable",
+            Self.doubleValue(metric["confidence"]) != nil else {
+        continue
+      }
+      for metricID in metricIDs where Self.dailyRecoveryUnavailableMetric(metric, matches: metricID) {
+        cachePreferredDailyRecoveryUnavailableMetric(metric, metricID: metricID, in: &metricsByCacheKey)
+        if let dateKey = metric["date_key"] as? String ?? metric["date"] as? String {
+          cachePreferredDailyRecoveryUnavailableMetric(
+            metric,
+            metricID: metricID,
+            dateKey: dateKey,
+            in: &metricsByCacheKey
+          )
+        }
+      }
+    }
+    return metricsByCacheKey
+  }
+
+  nonisolated static func dailyRecoveryUnavailableMetricCacheKey(
+    metricID: String,
+    dateKey: String?
+  ) -> String {
+    "\(metricID)|\(dateKey ?? "*")"
+  }
+
+  nonisolated private static func cachePreferredDailyRecoveryUnavailableMetric(
+    _ metric: [String: Any],
+    metricID: String,
+    dateKey: String? = nil,
+    in metricsByCacheKey: inout [String: [String: Any]]
+  ) {
+    let key = dailyRecoveryUnavailableMetricCacheKey(metricID: metricID, dateKey: dateKey)
+    if let existing = metricsByCacheKey[key],
+       !dailyRecoveryMetric(metric, isBetterThan: existing, valueKey: "confidence") {
+      return
+    }
+    metricsByCacheKey[key] = metric
   }
 
   func markBandSleepSyncRequested(automatic: Bool, canSync: Bool, detail: String) {

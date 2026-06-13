@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct HomeDashboardView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
   @EnvironmentObject private var router: AppRouter
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var activityTimeline: HomeActivityTimelineStore
   @ObservedObject var healthStore: HealthDataStore
   @Binding var selectedDate: Date
   let openHealthRoute: (HealthRoute) -> Void
@@ -44,7 +46,7 @@ struct HomeDashboardView: View {
           sleep: homeSnapshot(for: .sleep),
           activity: homeSnapshot(for: .strain),
           recovery: homeSnapshot(for: .recovery),
-          activities: model.homeActivityTimelineItems,
+          activities: activityTimeline.items,
           openSleep: { openHealth(.sleep) },
           openActivity: { openHealth(.strain) },
           openRecovery: { openHealth(.recovery) }
@@ -64,7 +66,7 @@ struct HomeDashboardView: View {
         .allowsHitTesting(false)
     }
     .safeAreaInset(edge: .bottom, alignment: .trailing) {
-      HomeStartActivityFloatingButton(session: model.activitySession)
+      HomeStartActivityFloatingButton(model: model, session: model.activitySession)
         .padding(.trailing, 18)
         .padding(.bottom, 10)
     }
@@ -78,7 +80,7 @@ struct HomeDashboardView: View {
       }
       ToolbarItem(placement: .topBarTrailing) {
         NavigationLink {
-          DeviceView()
+          DeviceView(model: model)
         } label: {
           Image(systemName: "applewatch")
             .font(.system(size: 17, weight: .semibold))
@@ -144,7 +146,7 @@ struct HomeDashboardView: View {
   }
 
   private var deviceToolbarConnected: Bool {
-    let state = model.ble.connectionState.lowercased()
+    let state = connectionStatus.connectionState.lowercased()
     return state == "ready" || state == "connected"
   }
 
@@ -158,9 +160,9 @@ struct HomeDashboardView: View {
 
   private var landingSnapshots: [HealthMetricSnapshot] {
     healthStore.landingSnapshots(
-      liveHeartRateBPM: model.ble.liveHeartRateBPM,
-      liveHeartRateSource: model.ble.liveHeartRateSource,
-      liveHeartRateUpdatedAt: model.ble.liveHeartRateUpdatedAt,
+      liveHeartRateBPM: nil,
+      liveHeartRateSource: "home dashboard stable daily metrics",
+      liveHeartRateUpdatedAt: nil,
       stableDailyMetrics: true
     )
   }
@@ -215,4 +217,3 @@ struct HomeDashboardView: View {
     model.recordUIAction("coach.opened", detail: "Home daily score card")
   }
 }
-

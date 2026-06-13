@@ -8,7 +8,9 @@ import HealthKit
 #endif
 
 struct MoreView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
+  let ble: GooseBLEClient
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
   @EnvironmentObject private var router: AppRouter
   @ObservedObject private var healthStore: HealthDataStore
   @StateObject private var store: MoreDataStore
@@ -18,18 +20,36 @@ struct MoreView: View {
   @AppStorage(OnboardingStorage.weightGrams) private var profileWeightGrams = 0
 
   @MainActor
-  init(healthStore: HealthDataStore) {
+  init(
+    model: GooseAppModel,
+    ble: GooseBLEClient,
+    connectionStatus: GooseConnectionStatusStore,
+    healthStore: HealthDataStore
+  ) {
+    self.model = model
+    self.ble = ble
+    self.connectionStatus = connectionStatus
     self.healthStore = healthStore
     _store = StateObject(wrappedValue: MoreDataStore())
   }
 
   @MainActor
-  init(healthStore: HealthDataStore, store: MoreDataStore) {
+  init(
+    model: GooseAppModel,
+    ble: GooseBLEClient,
+    connectionStatus: GooseConnectionStatusStore,
+    healthStore: HealthDataStore,
+    store: MoreDataStore
+  ) {
+    self.model = model
+    self.ble = ble
+    self.connectionStatus = connectionStatus
     self.healthStore = healthStore
     _store = StateObject(wrappedValue: store)
   }
 
   var body: some View {
+    let status = routeStatus
     List {
       Section {
         NavigationLink(value: MoreRoute.profile) {
@@ -42,23 +62,23 @@ struct MoreView: View {
       }
 
       Section("Device") {
-        routeRows(MoreRoute.deviceRoutes)
+        routeRows(MoreRoute.deviceRoutes, routeStatus: status)
       }
 
       Section("App") {
-        routeRows(MoreRoute.appRoutes)
+        routeRows(MoreRoute.appRoutes, routeStatus: status)
       }
 
       Section("Settings") {
-        routeRows(MoreRoute.settingsRoutes)
+        routeRows(MoreRoute.settingsRoutes, routeStatus: status)
       }
 
       Section("Support") {
-        routeRows(MoreRoute.supportRoutes)
+        routeRows(MoreRoute.supportRoutes, routeStatus: status)
       }
 
       Section("Developer") {
-        routeRows(MoreRoute.developerRoutes)
+        routeRows(MoreRoute.developerRoutes, routeStatus: status)
       }
     }
     .listStyle(.insetGrouped)
@@ -77,11 +97,11 @@ struct MoreView: View {
   }
 
   private var routeStatus: MoreRouteStatus {
-    store.routeStatus(ble: model.ble, model: model)
+    store.routeStatus(connectionState: connectionStatus.connectionState, model: model)
   }
 
   @ViewBuilder
-  private func routeRows(_ routes: [MoreRoute]) -> some View {
+  private func routeRows(_ routes: [MoreRoute], routeStatus: MoreRouteStatus) -> some View {
     ForEach(routes) { route in
       NavigationLink(value: route) {
         MoreRouteRow(route: route, status: routeStatus[keyPath: route.statusKeyPath])
@@ -94,13 +114,25 @@ struct MoreView: View {
   private func destination(for route: MoreRoute) -> some View {
     switch route {
     case .device:
-      DeviceView()
+      DeviceView(model: model)
     case .profile:
-      MoreProfileView()
+      MoreProfileView(model: model)
     case .connectionLab:
-      ConnectionView()
+      ConnectionView(
+        ble: ble,
+        rustStatus: model.rustStatus,
+        helloSummary: model.helloSummary
+      )
     case .capture:
-      MoreCaptureView(store: store)
+      MoreCaptureView(
+        model: model,
+        ble: ble,
+        connectionStatus: ble.connectionStatus,
+        deviceStatus: ble.deviceStatus,
+        historicalSync: ble.historicalSyncStatusStore,
+        overnightGuard: model.overnightGuardStatusStore,
+        store: store
+      )
     case .localStore:
       MoreLocalStoreView(store: store)
     case .healthSync:
@@ -112,13 +144,26 @@ struct MoreView: View {
         router.openHealth(.algorithms)
       }
     case .debug:
-      MoreDebugView(store: store)
+      MoreDebugView(
+        model: model,
+        ble: ble,
+        packetMonitor: model.packetMonitor,
+        healthCapture: model.healthCaptureStatus,
+        connectionStatus: ble.connectionStatus,
+        deviceStatus: ble.deviceStatus,
+        historicalSync: ble.historicalSyncStatusStore,
+        store: store
+      )
     case .privacy:
       MorePrivacyView(store: store)
     case .support:
       MoreSupportView(store: store)
     case .about:
-      MoreAboutView(store: store)
+      MoreAboutView(
+        model: model,
+        deviceStatus: ble.deviceStatus,
+        store: store
+      )
     case .developer:
       MoreDeveloperView(routes: MoreRoute.developerToolRoutes, routeStatus: routeStatus)
     }

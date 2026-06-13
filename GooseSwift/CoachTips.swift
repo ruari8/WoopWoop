@@ -54,17 +54,26 @@ enum CoachTipFactory {
   static func metricTip(
     route: HealthRoute,
     healthStore: HealthDataStore,
-    appModel: GooseAppModel
+    alarmSummary: String = "",
+    activityStatus: String = "",
+    liveHeartRateBPM: Int? = nil,
+    liveHeartRateSource: String = "waiting",
+    liveHeartRateUpdatedAt: Date? = nil
   ) -> CoachInlineTip {
     switch route {
     case .sleep:
-      return sleepTip(healthStore: healthStore, ble: appModel.ble)
+      return sleepTip(healthStore: healthStore, alarmSummary: alarmSummary)
     case .recovery:
       return recoveryTip(healthStore: healthStore)
     case .strain:
-      return strainTip(healthStore: healthStore, appModel: appModel)
+      return strainTip(healthStore: healthStore, activityStatus: activityStatus)
     case .stress:
-      return stressTip(healthStore: healthStore, appModel: appModel)
+      return stressTip(
+        healthStore: healthStore,
+        liveHeartRateBPM: liveHeartRateBPM,
+        liveHeartRateSource: liveHeartRateSource,
+        liveHeartRateUpdatedAt: liveHeartRateUpdatedAt
+      )
     default:
       let snapshot = healthStore.snapshot(for: route)
       return CoachInlineTip(
@@ -79,7 +88,7 @@ enum CoachTipFactory {
     }
   }
 
-  static func sleepTip(healthStore: HealthDataStore, ble: GooseBLEClient) -> CoachInlineTip {
+  static func sleepTip(healthStore: HealthDataStore, alarmSummary: String) -> CoachInlineTip {
     let snapshot = healthStore.snapshot(for: .sleep)
     let schedule = healthStore.sleepV1ScheduleSummary()
     let debt = healthStore.sleepV1DebtSummary()
@@ -103,7 +112,7 @@ enum CoachTipFactory {
       - Schedule: \(schedule)
       - Sleep debt: \(debt)
       - Confidence: \(confidence)
-      - Alarm: \(ble.alarmDisplaySummary)
+      - Alarm: \(alarmSummary)
       - Score next action: \(nextAction)
       """,
       systemImage: "moon.zzz.fill",
@@ -143,11 +152,11 @@ enum CoachTipFactory {
     )
   }
 
-  private static func strainTip(healthStore: HealthDataStore, appModel: GooseAppModel) -> CoachInlineTip {
+  private static func strainTip(healthStore: HealthDataStore, activityStatus: String) -> CoachInlineTip {
     let snapshot = healthStore.snapshot(for: .strain)
     let strain = healthStore.strainFeatureScoreSummary()
     let motion = healthStore.motionFeatureSummary()
-    let activity = appModel.activitySession.statusText
+    let activity = activityStatus.isEmpty ? "No active activity" : activityStatus
     let nextAction = healthStore.packetDerivedScoreNextActionSummary()
 
     return CoachInlineTip(
@@ -171,14 +180,19 @@ enum CoachTipFactory {
     )
   }
 
-  private static func stressTip(healthStore: HealthDataStore, appModel: GooseAppModel) -> CoachInlineTip {
+  private static func stressTip(
+    healthStore: HealthDataStore,
+    liveHeartRateBPM: Int?,
+    liveHeartRateSource: String,
+    liveHeartRateUpdatedAt: Date?
+  ) -> CoachInlineTip {
     let snapshot = healthStore.snapshot(for: .stress)
     let stress = healthStore.stressFeatureScoreSummary()
     let hrv = healthStore.hrvFeatureSummary()
     let liveHeartRate = healthStore.latestHeartRateSummary(
-      bpm: appModel.ble.liveHeartRateBPM,
-      source: appModel.ble.liveHeartRateSource,
-      updatedAt: appModel.ble.liveHeartRateUpdatedAt
+      bpm: liveHeartRateBPM,
+      source: liveHeartRateSource,
+      updatedAt: liveHeartRateUpdatedAt
     )
 
     return CoachInlineTip(

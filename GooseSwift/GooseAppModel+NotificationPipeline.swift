@@ -606,7 +606,6 @@ extension GooseAppModel {
 
     if let summary = interpretation.summary {
       packetUIStateAggregator.set(.lastParsedFrameSummary, summary)
-      ble.record(source: "rust", title: "notification.frame.parsed", body: summary)
     }
   }
 
@@ -623,7 +622,6 @@ extension GooseAppModel {
 
     if let summary = interpretation.summary {
       publishParsedFrameSummary(summary, at: event.capturedAt)
-      ble.record(source: "rust", title: "notification.frame.parsed", body: summary)
     }
     recordOvernightPacketTypeTarget(interpretation.packetType)
     if let family = interpretation.healthPacketFamily {

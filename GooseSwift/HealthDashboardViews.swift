@@ -322,6 +322,8 @@ struct HealthRouteShortcutCard: View {
 struct HealthRouteDetailView: View {
   let route: HealthRoute
   @StateObject private var store: HealthDataStore
+  @StateObject private var ble = GooseBLEClient(startCentral: false)
+  @StateObject private var activitySession = ActivitySessionModel()
 
   init(route: HealthRoute, previewState: HealthPreviewState? = nil) {
     self.route = route
@@ -333,23 +335,54 @@ struct HealthRouteDetailView: View {
   }
 
   var body: some View {
-    HealthRouteDestinationView(route: route, store: store)
+    HealthRouteDestinationView(
+      route: route,
+      store: store,
+      ble: ble,
+      liveVitals: ble.liveVitals,
+      activitySession: activitySession,
+      recordUIAction: { _, _ in }
+    )
   }
 }
 
 struct HealthRouteDestinationView: View {
   let route: HealthRoute
   @ObservedObject var store: HealthDataStore
+  let ble: GooseBLEClient
+  let liveVitals: GooseLiveVitalsStore
+  let activitySession: ActivitySessionModel
   var selectedDate: Binding<Date>?
+  let recordUIAction: (String, String) -> Void
 
-  init(route: HealthRoute, store: HealthDataStore, selectedDate: Binding<Date>? = nil) {
+  init(
+    route: HealthRoute,
+    store: HealthDataStore,
+    ble: GooseBLEClient,
+    liveVitals: GooseLiveVitalsStore,
+    activitySession: ActivitySessionModel,
+    selectedDate: Binding<Date>? = nil,
+    recordUIAction: @escaping (String, String) -> Void
+  ) {
     self.route = route
     self.store = store
+    self.ble = ble
+    self.liveVitals = liveVitals
+    self.activitySession = activitySession
     self.selectedDate = selectedDate
+    self.recordUIAction = recordUIAction
   }
 
   var body: some View {
-    HealthRouteContentView(route: route, store: store, selectedDate: selectedDate)
+    HealthRouteContentView(
+      route: route,
+      store: store,
+      ble: ble,
+      liveVitals: liveVitals,
+      activitySession: activitySession,
+      selectedDate: selectedDate,
+      recordUIAction: recordUIAction
+    )
       .task {
         store.loadBridgeCatalogsIfNeeded()
       }
@@ -359,20 +392,33 @@ struct HealthRouteDestinationView: View {
 struct HealthRouteContentView: View {
   let route: HealthRoute
   @ObservedObject var store: HealthDataStore
+  let ble: GooseBLEClient
+  let liveVitals: GooseLiveVitalsStore
+  let activitySession: ActivitySessionModel
   var selectedDate: Binding<Date>? = nil
+  let recordUIAction: (String, String) -> Void
 
   var body: some View {
     switch route {
     case .healthMonitor:
       HealthMonitorView(store: store)
     case .sleep, .recovery, .strain, .stress:
-      HealthMetricFamilyView(route: route, store: store, externalSelectedDate: selectedDate)
+      HealthMetricFamilyView(
+        route: route,
+        store: store,
+        ble: ble,
+        historicalSync: ble.historicalSyncStatusStore,
+        liveVitals: liveVitals,
+        activitySession: activitySession,
+        externalSelectedDate: selectedDate,
+        recordUIAction: recordUIAction
+      )
     case .cardioLoad:
       CardioLoadView(store: store)
     case .energyBank:
       EnergyBankView(store: store)
     case .packetInputs:
-      PacketHealthView(store: store)
+      PacketHealthView(store: store, liveVitals: liveVitals)
     case .algorithms:
       AlgorithmsHealthView(store: store)
     case .referenceComparisons:
@@ -554,8 +600,8 @@ struct HealthMonitorView: View {
 }
 
 struct PacketHealthView: View {
-  @EnvironmentObject private var model: GooseAppModel
   @ObservedObject var store: HealthDataStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
 
   var body: some View {
     List {
@@ -569,9 +615,9 @@ struct PacketHealthView: View {
 
       Section("Packet-Derived Inputs") {
         HealthInfoRow(row: HealthSummaryRow("Readiness", value: store.metricInputReadinessSummary(), source: store.packetInputSource("metrics.input_readiness"), systemImage: "checklist"))
-        HealthInfoRow(row: HealthSummaryRow("Latest HR", value: store.latestHeartRateSummary(bpm: model.ble.liveHeartRateBPM, source: model.ble.liveHeartRateSource, updatedAt: model.ble.liveHeartRateUpdatedAt), source: model.ble.liveHeartRateBPM == nil ? .unavailable("BLE latest HR unavailable") : .live("BLE latest HR"), systemImage: "heart"))
-        if !store.latestHeartRateProvenanceSummary(source: model.ble.liveHeartRateSource).isEmpty {
-          HealthInfoRow(row: HealthSummaryRow("HR provenance", value: store.latestHeartRateProvenanceSummary(source: model.ble.liveHeartRateSource), source: .live("latestHeartRateProvenanceSummary()"), systemImage: "doc.text.magnifyingglass"))
+        HealthInfoRow(row: HealthSummaryRow("Latest HR", value: store.latestHeartRateSummary(bpm: liveVitals.liveHeartRateBPM, source: liveVitals.liveHeartRateSource, updatedAt: liveVitals.liveHeartRateUpdatedAt), source: liveVitals.liveHeartRateBPM == nil ? .unavailable("BLE latest HR unavailable") : .live("BLE latest HR"), systemImage: "heart"))
+        if !store.latestHeartRateProvenanceSummary(source: liveVitals.liveHeartRateSource).isEmpty {
+          HealthInfoRow(row: HealthSummaryRow("HR provenance", value: store.latestHeartRateProvenanceSummary(source: liveVitals.liveHeartRateSource), source: .live("latestHeartRateProvenanceSummary()"), systemImage: "doc.text.magnifyingglass"))
         }
         HealthInfoRow(row: HealthSummaryRow("Motion", value: store.motionFeatureSummary(), source: store.packetInputSource("metrics.motion_features"), systemImage: "figure.walk.motion"))
         if !store.motionFeatureProvenanceSummary().isEmpty {

@@ -4,11 +4,15 @@ import SwiftUI
 import UIKit
 
 struct HealthMetricFamilyView: View {
-  @EnvironmentObject private var model: GooseAppModel
   @EnvironmentObject private var router: AppRouter
   let route: HealthRoute
   @ObservedObject var store: HealthDataStore
+  let ble: GooseBLEClient
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
+  let activitySession: ActivitySessionModel
   var externalSelectedDate: Binding<Date>? = nil
+  let recordUIAction: (String, String) -> Void
   @State private var selectedTrend: HealthMetricSnapshot?
   @State private var selectedPrimarySleep: PrimarySleepDetail?
   @State private var showAddSleepUnavailable = false
@@ -17,13 +21,28 @@ struct HealthMetricFamilyView: View {
 
   var body: some View {
     if route == .sleep {
-      SleepV2OverviewPage(store: store, ble: model.ble, selectedDate: selectedDateBinding)
+      SleepV2OverviewPage(
+        store: store,
+        ble: ble,
+        historicalSync: historicalSync,
+        selectedDate: selectedDateBinding
+      )
     } else if route == .recovery {
-      RecoveryV2OverviewPage(store: store, selectedDate: selectedDateBinding)
+      RecoveryV2OverviewPage(store: store, selectedDate: selectedDateBinding, recordUIAction: recordUIAction)
     } else if route == .strain {
-      StrainV2OverviewPage(store: store, selectedDate: selectedDateBinding)
+      StrainV2OverviewPage(
+        store: store,
+        selectedDate: selectedDateBinding,
+        activityStatus: activitySession.statusText,
+        recordUIAction: recordUIAction
+      )
     } else if route == .stress {
-      StressV2OverviewPage(store: store, selectedDate: selectedDateBinding)
+      StressV2OverviewPage(
+        store: store,
+        liveVitals: liveVitals,
+        selectedDate: selectedDateBinding,
+        recordUIAction: recordUIAction
+      )
     } else {
       metricFamilyBody
     }
@@ -43,8 +62,12 @@ struct HealthMetricFamilyView: View {
         }
 
         if route == .sleep {
-          SleepDataBridgeSection(store: store, ble: model.ble)
-          SleepAlarmBridgeSection(ble: model.ble)
+          SleepDataBridgeSection(
+            store: store,
+            ble: ble,
+            historicalSync: historicalSync
+          )
+          SleepAlarmBridgeSection(ble: ble, alarmStatus: ble.deviceAdvancedStatus)
         }
 
         if route == .stress {
@@ -139,12 +162,20 @@ struct HealthMetricFamilyView: View {
   }
 
   private var coachTip: CoachInlineTip {
-    CoachTipFactory.metricTip(route: route, healthStore: store, appModel: model)
+    CoachTipFactory.metricTip(
+      route: route,
+      healthStore: store,
+      alarmSummary: ble.alarmDisplaySummary,
+      activityStatus: activitySession.statusText,
+      liveHeartRateBPM: liveVitals.liveHeartRateBPM,
+      liveHeartRateSource: liveVitals.liveHeartRateSource,
+      liveHeartRateUpdatedAt: liveVitals.liveHeartRateUpdatedAt
+    )
   }
 
   private func openCoachTip() {
     router.openCoach(prompt: coachTip.prompt)
-    model.recordUIAction("coach.opened", detail: "\(route.rawValue) inline tip")
+    recordUIAction("coach.opened", "\(route.rawValue) inline tip")
   }
 
   private var subtitle: String {
@@ -165,7 +196,7 @@ struct HealthMetricFamilyView: View {
         HealthSummaryRow("Time in bed", value: store.primarySleep()?.timeInBedText ?? "No data", source: store.packetScoreSource("sleep window"), systemImage: "clock"),
         HealthSummaryRow("Time asleep", value: store.primarySleep()?.durationText ?? "No data", source: store.packetScoreSource("sleep window"), systemImage: "moon.zzz"),
         HealthSummaryRow("Sleep Needed", value: "No target sleep input", source: .unavailable("sleep need requires target sleep amount and band sleep history"), systemImage: "alarm"),
-        HealthSummaryRow("Alarm", value: model.ble.alarmDisplaySummary, source: alarmRowSource, systemImage: "bell"),
+        HealthSummaryRow("Alarm", value: ble.alarmDisplaySummary, source: alarmRowSource, systemImage: "bell"),
       ]
     case .recovery:
       let selectedDate = selectedDateBinding.wrappedValue
@@ -224,13 +255,13 @@ struct HealthMetricFamilyView: View {
   }
 
   private var alarmRowSource: HealthDataSource {
-    if model.ble.lastAlarmScheduledAt != nil {
+    if ble.lastAlarmScheduledAt != nil {
       return .live("WHOOP alarm command response")
     }
-    if model.ble.canWriteAlarm {
+    if ble.canWriteAlarm {
       return .live("WHOOP alarm write ready")
     }
-    return .unavailable(model.ble.alarmWriteSupportSummary)
+    return .unavailable(ble.alarmWriteSupportSummary)
   }
 
   private var timelineRows: [HealthSummaryRow] {
@@ -394,9 +425,10 @@ struct StrainV2ActivityBackground: View {
 
 struct StrainV2OverviewPage: View {
   @EnvironmentObject private var router: AppRouter
-  @EnvironmentObject private var model: GooseAppModel
   @ObservedObject var store: HealthDataStore
   @Binding var selectedDate: Date
+  let activityStatus: String
+  let recordUIAction: (String, String) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @State private var showingDatePicker = false
   @State private var showingInsightsSheet = false
@@ -557,7 +589,7 @@ struct StrainV2OverviewPage: View {
   }
 
   private var coachTip: CoachInlineTip {
-    CoachTipFactory.metricTip(route: .strain, healthStore: store, appModel: model)
+    CoachTipFactory.metricTip(route: .strain, healthStore: store, activityStatus: activityStatus)
   }
 
   private var trendRows: [HealthMetricSnapshot] {
@@ -566,7 +598,7 @@ struct StrainV2OverviewPage: View {
 
   private func openCoachTip() {
     router.openCoach(prompt: coachTip.prompt)
-    model.recordUIAction("coach.opened", detail: "strain inline tip")
+    recordUIAction("coach.opened", "strain inline tip")
   }
 }
 

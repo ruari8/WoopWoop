@@ -20,11 +20,12 @@ struct HomeTopScrollFade: View {
 }
 
 struct HomeStartActivityFloatingButton: View {
+  let model: GooseAppModel
   @ObservedObject var session: ActivitySessionModel
 
   var body: some View {
     NavigationLink {
-      LiveActivityView()
+      LiveActivityView(model: model)
     } label: {
       Image(systemName: session.isActive ? session.selectedActivity.systemImage : "plus")
         .font(.system(size: 21, weight: .bold))
@@ -356,4 +357,3 @@ struct HomeCardioLoadWidget: View {
     days.last?.status ?? snapshot.status
   }
 }
-

@@ -14,7 +14,7 @@ extension HealthDataStore {
     return "Normal range"
   }
 
-  static func energyBankStatusLabel(percent: Double?) -> String {
+  nonisolated static func energyBankStatusLabel(percent: Double?) -> String {
     guard let percent else {
       return "No data"
     }
@@ -30,7 +30,7 @@ extension HealthDataStore {
     return "Low"
   }
 
-  static func clamp(_ value: Double, min lowerBound: Double, max upperBound: Double) -> Double {
+  nonisolated static func clamp(_ value: Double, min lowerBound: Double, max upperBound: Double) -> Double {
     min(max(value, lowerBound), upperBound)
   }
 
@@ -100,7 +100,7 @@ extension HealthDataStore {
     }
   }
 
-  static func isLikelySleepWindow(_ date: Date, calendar: Calendar = .current) -> Bool {
+  nonisolated static func isLikelySleepWindow(_ date: Date, calendar: Calendar = .current) -> Bool {
     let hour = calendar.component(.hour, from: date)
     return hour < 7 || hour >= 23
   }
@@ -178,7 +178,7 @@ extension HealthDataStore {
     return string
   }
 
-  static func jsonObject(fromJSONString value: Any?) -> [String: Any]? {
+  nonisolated static func jsonObject(fromJSONString value: Any?) -> [String: Any]? {
     guard let string = value as? String,
           let data = string.data(using: .utf8),
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -187,7 +187,7 @@ extension HealthDataStore {
     return object
   }
 
-  static func jsonArray(fromJSONString value: Any?) -> [Any]? {
+  nonisolated static func jsonArray(fromJSONString value: Any?) -> [Any]? {
     guard let string = value as? String,
           let data = string.data(using: .utf8),
           let array = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
@@ -196,7 +196,7 @@ extension HealthDataStore {
     return array
   }
 
-  static func localHealthMetricRowIsDisplaySafe(_ metric: [String: Any]) -> Bool {
+  nonisolated static func localHealthMetricRowIsDisplaySafe(_ metric: [String: Any]) -> Bool {
     guard let rawSourceKind = metric["source_kind"] as? String,
           MetricSourceKind(rawValue: rawSourceKind) != nil else {
       return false
@@ -204,7 +204,7 @@ extension HealthDataStore {
     return !localHealthMetricValueContainsForbiddenSourceMarker(metric)
   }
 
-  static func localHealthMetricValueContainsForbiddenSourceMarker(_ value: Any?) -> Bool {
+  nonisolated static func localHealthMetricValueContainsForbiddenSourceMarker(_ value: Any?) -> Bool {
     guard let value else {
       return false
     }
@@ -231,7 +231,7 @@ extension HealthDataStore {
     return false
   }
 
-  static func localHealthMetricJSONStringContainsForbiddenSourceMarker(_ text: String) -> Bool {
+  nonisolated static func localHealthMetricJSONStringContainsForbiddenSourceMarker(_ text: String) -> Bool {
     guard let data = text.data(using: .utf8),
           let value = try? JSONSerialization.jsonObject(with: data) else {
       return false
@@ -239,7 +239,7 @@ extension HealthDataStore {
     return localHealthMetricValueContainsForbiddenSourceMarker(value)
   }
 
-  static func localHealthMetricTextContainsForbiddenSourceMarker(_ text: String) -> Bool {
+  nonisolated static func localHealthMetricTextContainsForbiddenSourceMarker(_ text: String) -> Bool {
     let normalized = localHealthMetricNormalizedMarker(text)
     guard !normalized.isEmpty else {
       return false
@@ -269,7 +269,7 @@ extension HealthDataStore {
     return normalized == "official_app" || normalized.hasPrefix("official_app_")
   }
 
-  static func localHealthMetricNormalizedMarker(_ text: String) -> String {
+  nonisolated static func localHealthMetricNormalizedMarker(_ text: String) -> String {
     text
       .lowercased()
       .unicodeScalars
@@ -306,7 +306,7 @@ extension HealthDataStore {
     return current as? [String: Any]
   }
 
-  static func array(_ value: Any?) -> [[String: Any]] {
+  nonisolated static func array(_ value: Any?) -> [[String: Any]] {
     value as? [[String: Any]] ?? []
   }
 
@@ -365,7 +365,7 @@ extension HealthDataStore {
     return nil
   }
 
-  static func int64Value(_ value: Any?) -> Int64? {
+  nonisolated static func int64Value(_ value: Any?) -> Int64? {
     if let int64 = value as? Int64 {
       return int64
     }
@@ -381,7 +381,7 @@ extension HealthDataStore {
     return nil
   }
 
-  static func doubleValue(_ value: Any?) -> Double? {
+  nonisolated static func doubleValue(_ value: Any?) -> Double? {
     if let double = value as? Double {
       return double
     }
@@ -391,7 +391,7 @@ extension HealthDataStore {
     return nil
   }
 
-  static func numberText(_ value: Any?, fractionDigits: Int) -> String? {
+  nonisolated static func numberText(_ value: Any?, fractionDigits: Int) -> String? {
     guard let double = doubleValue(value) else {
       return nil
     }
@@ -445,7 +445,7 @@ extension HealthDataStore {
     )
   }
 
-  static func liveHRDerivedRestingHeartRateSample() -> LiveHRDerivedRestingHeartRateSample? {
+  nonisolated static func liveHRDerivedRestingHeartRateSample() -> LiveHRDerivedRestingHeartRateSample? {
     let defaults = UserDefaults.standard
     if defaults.object(forKey: restingHeartRateEstimateBPMDefaultsKey) != nil,
        let sample = liveHRDerivedRestingHeartRateSample(
@@ -469,7 +469,7 @@ extension HealthDataStore {
     return nil
   }
 
-  static func liveHRDerivedRestingHeartRateSample(
+  nonisolated static func liveHRDerivedRestingHeartRateSample(
     bpm: Double?,
     sampleCount: Int,
     updatedAt: Date?,
@@ -579,7 +579,7 @@ extension HealthDataStore {
     return formatter.date(from: text)
   }
 
-  static func timeLabel(_ date: Date) -> String {
+  nonisolated static func timeLabel(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.timeStyle = .short
     formatter.dateStyle = .none
@@ -1020,7 +1020,7 @@ extension HealthDataStore {
     )
   }
 
-  static func relativeText(for date: Date?) -> String? {
+  nonisolated static func relativeText(for date: Date?) -> String? {
     guard let date else {
       return nil
     }

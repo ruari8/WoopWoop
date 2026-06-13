@@ -5,13 +5,14 @@ import UIKit
 
 struct SleepDataBridgeSection: View {
   @ObservedObject var store: HealthDataStore
-  @ObservedObject var ble: GooseBLEClient
+  let ble: GooseBLEClient
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       HealthSectionTitle("Sleep Data")
       VStack(spacing: 8) {
-        HealthInfoRow(row: HealthSummaryRow("Band history", value: "\(ble.historicalSyncStatus) | \(packetText)", source: .live("WHOOP historical sync"), systemImage: "antenna.radiowaves.left.and.right"))
+        HealthInfoRow(row: HealthSummaryRow("Band history", value: "\(historicalSync.status) | \(historicalSync.packetText)", source: .live("WHOOP historical sync"), systemImage: "antenna.radiowaves.left.and.right"))
         HealthInfoRow(row: HealthSummaryRow("Band sleep import", value: store.bandSleepImportStatus, source: .bridge("band historical packets"), systemImage: "square.stack.3d.up"))
         HealthInfoRow(row: HealthSummaryRow("Goose sleep score", value: store.sleepFeatureScoreSummary(), source: store.packetScoreSource("metrics.sleep_score_from_features"), systemImage: "bed.double"))
       }
@@ -19,10 +20,10 @@ struct SleepDataBridgeSection: View {
         Button {
           store.markBandSleepSyncRequested(
             automatic: false,
-            canSync: ble.canSyncHistorical,
-            detail: ble.historicalSyncStatus
+            canSync: historicalSync.canSyncHistorical,
+            detail: historicalSync.status
           )
-          if ble.canSyncHistorical {
+          if historicalSync.canSyncHistorical {
             ble.syncHistoricalPackets(rangeFirst: true)
           }
         } label: {
@@ -30,10 +31,10 @@ struct SleepDataBridgeSection: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .disabled(!ble.canSyncHistorical)
+        .disabled(!historicalSync.canSyncHistorical)
 
         Button {
-          store.refreshSleepAfterBandSync(packetCount: ble.historicalPacketCount)
+          store.refreshSleepAfterBandSync(packetCount: historicalSync.packetCount)
         } label: {
           Label("Refresh Score", systemImage: "chart.xyaxis.line")
             .frame(maxWidth: .infinity)
@@ -43,9 +44,6 @@ struct SleepDataBridgeSection: View {
     }
   }
 
-  private var packetText: String {
-    ble.historicalPacketCount == 1 ? "1 packet" : "\(ble.historicalPacketCount) packets"
-  }
 }
 
 enum SleepAlarmConfirmation: Identifiable {
@@ -88,7 +86,8 @@ enum SleepAlarmConfirmation: Identifiable {
 }
 
 struct SleepAlarmBridgeSection: View {
-  @ObservedObject var ble: GooseBLEClient
+  let ble: GooseBLEClient
+  @ObservedObject var alarmStatus: GooseDeviceAdvancedStatusStore
   @State private var alarmTime = defaultWakeTime()
   @State private var pendingConfirmation: SleepAlarmConfirmation?
   private let alarmID = 1
@@ -97,18 +96,18 @@ struct SleepAlarmBridgeSection: View {
     VStack(alignment: .leading, spacing: 12) {
       HealthSectionTitle("WHOOP Alarm")
       VStack(spacing: 8) {
-        HealthInfoRow(row: HealthSummaryRow("Write support", value: ble.alarmWriteSupportSummary, source: alarmSource, systemImage: "antenna.radiowaves.left.and.right"))
-        HealthInfoRow(row: HealthSummaryRow("Last alarm state", value: ble.alarmDisplaySummary, source: alarmSource, systemImage: "bell"))
-        HealthInfoRow(row: HealthSummaryRow("Last response", value: ble.lastAlarmResponseSummary, source: .bridge("WHOOP command response"), systemImage: "checkmark.seal"))
-        HealthInfoRow(row: HealthSummaryRow("Last event", value: ble.lastAlarmEventSummary, source: .bridge("WHOOP event stream"), systemImage: "waveform.path.ecg"))
-        if !ble.lastAlarmCommandFrameHex.isEmpty {
-          HealthInfoRow(row: HealthSummaryRow("Last write frame", value: String(ble.lastAlarmCommandFrameHex.prefix(38)), source: .bridge("V5 command frame"), systemImage: "doc.text.magnifyingglass"))
+        HealthInfoRow(row: HealthSummaryRow("Write support", value: alarmStatus.alarmWriteSupportSummary, source: alarmSource, systemImage: "antenna.radiowaves.left.and.right"))
+        HealthInfoRow(row: HealthSummaryRow("Last alarm state", value: alarmStatus.alarmDisplaySummary, source: alarmSource, systemImage: "bell"))
+        HealthInfoRow(row: HealthSummaryRow("Last response", value: alarmStatus.lastAlarmResponseSummary, source: .bridge("WHOOP command response"), systemImage: "checkmark.seal"))
+        HealthInfoRow(row: HealthSummaryRow("Last event", value: alarmStatus.lastAlarmEventSummary, source: .bridge("WHOOP event stream"), systemImage: "waveform.path.ecg"))
+        if !alarmStatus.lastAlarmCommandFrameHex.isEmpty {
+          HealthInfoRow(row: HealthSummaryRow("Last write frame", value: String(alarmStatus.lastAlarmCommandFrameHex.prefix(38)), source: .bridge("V5 command frame"), systemImage: "doc.text.magnifyingglass"))
         }
-        if !ble.lastAlarmResponsePayloadHex.isEmpty {
-          HealthInfoRow(row: HealthSummaryRow("Response hex", value: String(ble.lastAlarmResponsePayloadHex.prefix(38)), source: .bridge("WHOOP command response"), systemImage: "number"))
+        if !alarmStatus.lastAlarmResponsePayloadHex.isEmpty {
+          HealthInfoRow(row: HealthSummaryRow("Response hex", value: String(alarmStatus.lastAlarmResponsePayloadHex.prefix(38)), source: .bridge("WHOOP command response"), systemImage: "number"))
         }
-        if !ble.lastAlarmEventPayloadHex.isEmpty {
-          HealthInfoRow(row: HealthSummaryRow("Event hex", value: String(ble.lastAlarmEventPayloadHex.prefix(38)), source: .bridge("WHOOP event stream"), systemImage: "number"))
+        if !alarmStatus.lastAlarmEventPayloadHex.isEmpty {
+          HealthInfoRow(row: HealthSummaryRow("Event hex", value: String(alarmStatus.lastAlarmEventPayloadHex.prefix(38)), source: .bridge("WHOOP event stream"), systemImage: "number"))
         }
       }
 
@@ -128,7 +127,7 @@ struct SleepAlarmBridgeSection: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(!ble.canWriteAlarm)
+        .disabled(!alarmStatus.canWriteAlarm)
 
         Button {
           pendingConfirmation = .run(alarmID)
@@ -137,7 +136,7 @@ struct SleepAlarmBridgeSection: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .disabled(!ble.canWriteAlarm)
+        .disabled(!alarmStatus.canWriteAlarm)
       }
 
       Button(role: .destructive) {
@@ -147,7 +146,7 @@ struct SleepAlarmBridgeSection: View {
           .frame(maxWidth: .infinity)
       }
       .buttonStyle(.bordered)
-      .disabled(!ble.canWriteAlarm)
+      .disabled(!alarmStatus.canWriteAlarm)
     }
     .alert(item: $pendingConfirmation) { confirmation in
       switch confirmation {
@@ -201,17 +200,16 @@ struct SleepAlarmBridgeSection: View {
   }
 
   private var alarmSource: HealthDataSource {
-    if ble.lastAlarmScheduledAt != nil {
+    if alarmStatus.lastAlarmScheduledAt != nil {
       return .live("WHOOP alarm event")
     }
-    if ble.canWriteAlarm {
+    if alarmStatus.canWriteAlarm {
       return .live("GooseBLEClient alarm write")
     }
-    return .unavailable(ble.alarmWriteSupportSummary)
+    return .unavailable(alarmStatus.alarmWriteSupportSummary)
   }
 
   private static func defaultWakeTime() -> Date {
     Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
   }
 }
-

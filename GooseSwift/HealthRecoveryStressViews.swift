@@ -5,9 +5,9 @@ import UIKit
 
 struct RecoveryV2OverviewPage: View {
   @EnvironmentObject private var router: AppRouter
-  @EnvironmentObject private var model: GooseAppModel
   @ObservedObject var store: HealthDataStore
   @Binding var selectedDate: Date
+  let recordUIAction: (String, String) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @State private var showingDatePicker = false
   @State private var selectedTrend: HealthMetricSnapshot?
@@ -186,20 +186,21 @@ struct RecoveryV2OverviewPage: View {
   }
 
   private var coachTip: CoachInlineTip {
-    CoachTipFactory.metricTip(route: .recovery, healthStore: store, appModel: model)
+    CoachTipFactory.metricTip(route: .recovery, healthStore: store)
   }
 
   private func openCoachTip() {
     router.openCoach(prompt: coachTip.prompt)
-    model.recordUIAction("coach.opened", detail: "recovery v2 inline tip")
+    recordUIAction("coach.opened", "recovery v2 inline tip")
   }
 }
 
 struct StressV2OverviewPage: View {
   @EnvironmentObject private var router: AppRouter
-  @EnvironmentObject private var model: GooseAppModel
   @ObservedObject var store: HealthDataStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @Binding var selectedDate: Date
+  let recordUIAction: (String, String) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @State private var showingDatePicker = false
   @State private var selectedTrend: HealthMetricSnapshot?
@@ -350,12 +351,18 @@ struct StressV2OverviewPage: View {
   }
 
   private var coachTip: CoachInlineTip {
-    CoachTipFactory.metricTip(route: .stress, healthStore: store, appModel: model)
+    CoachTipFactory.metricTip(
+      route: .stress,
+      healthStore: store,
+      liveHeartRateBPM: liveVitals.liveHeartRateBPM,
+      liveHeartRateSource: liveVitals.liveHeartRateSource,
+      liveHeartRateUpdatedAt: liveVitals.liveHeartRateUpdatedAt
+    )
   }
 
   private func openCoachTip() {
     router.openCoach(prompt: coachTip.prompt)
-    model.recordUIAction("coach.opened", detail: "stress v2 inline tip")
+    recordUIAction("coach.opened", "stress v2 inline tip")
   }
 }
 

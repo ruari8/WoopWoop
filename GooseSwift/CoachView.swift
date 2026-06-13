@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct CoachView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
   @EnvironmentObject private var router: AppRouter
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @ObservedObject var healthStore: HealthDataStore
   @StateObject private var chat = OpenAICoachChatModel()
   @State private var promptDraft = ""
@@ -98,7 +99,7 @@ struct CoachView: View {
   }
 
   private var coachSnapshot: CoachOverviewSnapshot {
-    CoachOverviewSnapshot.make(healthStore: healthStore, appModel: model)
+    CoachOverviewSnapshot.make(healthStore: healthStore, appModel: model, liveVitals: liveVitals)
   }
 
   private func openChat(prompt: String?) {
@@ -131,16 +132,16 @@ private struct CoachOverviewSnapshot {
   let gaps: [CoachDataGap]
 
   @MainActor
-  static func make(healthStore: HealthDataStore, appModel: GooseAppModel) -> CoachOverviewSnapshot {
+  static func make(healthStore: HealthDataStore, appModel: GooseAppModel, liveVitals: GooseLiveVitalsStore) -> CoachOverviewSnapshot {
     let homeTip = CoachTipFactory.homeTip(healthStore: healthStore, appModel: appModel)
     let readiness = healthStore.metricInputReadinessSummary()
     let inputNextAction = healthStore.metricInputReadinessNextActionSummary()
     let featureNextAction = healthStore.packetDerivedFeatureNextActionSummary()
     let scoreNextAction = healthStore.packetDerivedScoreNextActionSummary()
     let liveHeartRate = healthStore.latestHeartRateSummary(
-      bpm: appModel.ble.liveHeartRateBPM,
-      source: appModel.ble.liveHeartRateSource,
-      updatedAt: appModel.ble.liveHeartRateUpdatedAt
+      bpm: liveVitals.liveHeartRateBPM,
+      source: liveVitals.liveHeartRateSource,
+      updatedAt: liveVitals.liveHeartRateUpdatedAt
     )
     let snapshots = [
       healthStore.snapshot(for: .sleep),
@@ -196,9 +197,9 @@ private struct CoachOverviewSnapshot {
         id: "live-hr",
         title: "Live HR",
         value: liveHeartRate,
-        status: appModel.ble.liveHeartRateSource,
-        freshness: HealthDataStore.relativeText(for: appModel.ble.liveHeartRateUpdatedAt) ?? "Waiting",
-        provenance: healthStore.latestHeartRateProvenanceSummary(source: appModel.ble.liveHeartRateSource),
+        status: liveVitals.liveHeartRateSource,
+        freshness: HealthDataStore.relativeText(for: liveVitals.liveHeartRateUpdatedAt) ?? "Waiting",
+        provenance: healthStore.latestHeartRateProvenanceSummary(source: liveVitals.liveHeartRateSource),
         systemImage: "heart.fill",
         tint: .red,
         route: .healthMonitor
@@ -667,9 +668,10 @@ private struct CoachProfileMenu: View {
 }
 
 #Preview("Signed out") {
+  let model = GooseAppModel(startBLE: false)
   NavigationStack {
-    CoachView(healthStore: HealthDataStore())
-      .environmentObject(GooseAppModel(startBLE: false))
+    CoachView(model: model, liveVitals: model.ble.liveVitals, healthStore: HealthDataStore())
+      .environmentObject(model)
       .environmentObject(AppRouter())
   }
 }

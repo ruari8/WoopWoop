@@ -92,6 +92,14 @@ final class MoreDataStore: ObservableObject {
 
   let bridge = GooseRustBridge()
   let outputDirectory: String
+  private let backgroundQueue = DispatchQueue(label: "com.goose.swift.more-data-store", qos: .utility)
+  private static let databaseExistsCacheInterval: TimeInterval = 2
+  private static let recentCaptureSessionsRefreshInterval: TimeInterval = 10
+  private var cachedDatabaseExists = false
+  private var databaseExistsCachedAt = Date.distantPast
+  private var bridgeStatusRefreshInFlight = false
+  private var recentCaptureSessionsRefreshInFlight = false
+  private var lastRecentCaptureSessionsRefreshedAt = Date.distantPast
 
   struct RawExportArtifactValidationResult {
     let bundleValidation: String
@@ -124,17 +132,19 @@ final class MoreDataStore: ObservableObject {
     healthBackfillEnd = end
     rawExportStart = start
     rawExportEnd = end
+    refreshDatabaseExistsCache(force: true)
   }
 
-  func routeStatus(ble: GooseBLEClient, model: GooseAppModel) -> MoreRouteStatus {
-    MoreRouteStatus(
+  func routeStatus(connectionState: String, model: GooseAppModel) -> MoreRouteStatus {
+    let databaseAvailable = databaseExists
+    return MoreRouteStatus(
       profile: OnboardingProfileSnapshot().hasRequiredDetails ? .ready : .pending,
-      device: ble.connectionState == "ready" ? .ready : .pending,
+      device: connectionState == "ready" ? .ready : .pending,
       connectionLab: model.helloSummary.hasPrefix("GET_HELLO") ? .ready : .pending,
       capture: captureSessionID == nil ? .pending : .ready,
-      localStore: databaseExists ? .ready : .unavailable,
+      localStore: databaseAvailable ? .ready : .unavailable,
       healthSync: healthSyncBackfillWindowIssueSummary() == nil ? .pending : .blocked,
-      rawExport: rawExportWindowIssueSummary() == nil ? (databaseExists ? .pending : .unavailable) : .blocked,
+      rawExport: rawExportWindowIssueSummary() == nil ? (databaseAvailable ? .pending : .unavailable) : .blocked,
       algorithms: .ready,
       debug: coreVersionStatus.hasPrefix("Rust core") ? .ready : .pending,
       privacy: privacyLintStatus == "Not linted" ? .pending : .ready,
@@ -145,18 +155,38 @@ final class MoreDataStore: ObservableObject {
   }
 
   func refreshBridgeStatus(model: GooseAppModel) {
-    coreVersionStatus = model.rustStatus
+    if coreVersionStatus != model.rustStatus {
+      coreVersionStatus = model.rustStatus
+    }
     guard schemaVersion == "Unknown" || coreVersionStatus == "Rust bridge not checked" else {
       return
     }
-    do {
-      let value = try bridge.request(method: "core.version")
-      let version = value["core_version"] as? String ?? "unknown"
-      let schema = value["storage_schema_version"].map(Self.stringValue) ?? "unknown"
-      coreVersionStatus = "Rust core \(version)"
-      schemaVersion = schema
-    } catch {
-      coreVersionStatus = "Rust bridge unavailable"
+    guard !bridgeStatusRefreshInFlight else {
+      return
+    }
+
+    bridgeStatusRefreshInFlight = true
+    backgroundQueue.async { [weak self] in
+      let result: Result<(version: String, schema: String), Error> = Result {
+        let value = try GooseRustBridge().request(method: "core.version")
+        return (
+          version: value["core_version"] as? String ?? "unknown",
+          schema: value["storage_schema_version"].map(Self.stringValue) ?? "unknown"
+        )
+      }
+      DispatchQueue.main.async { [weak self] in
+        guard let self else {
+          return
+        }
+        self.bridgeStatusRefreshInFlight = false
+        switch result {
+        case .success(let response):
+          self.coreVersionStatus = "Rust core \(response.version)"
+          self.schemaVersion = response.schema
+        case .failure:
+          self.coreVersionStatus = "Rust bridge unavailable"
+        }
+      }
     }
   }
 
@@ -169,22 +199,53 @@ final class MoreDataStore: ObservableObject {
     healthAuthorizationStatus = "Reads body mass only for profile autofill"
   }
 
-  func refreshRecentCaptureSessions() {
-    let nowMs = Self.unixMilliseconds(Date())
-    let thirtyDaysMs: Int64 = 30 * 24 * 60 * 60 * 1_000
-    do {
-      let value = try bridge.request(
-        method: "capture.list_sessions",
-        args: [
-          "database_path": databasePath,
-          "start_unix_ms": nowMs - thirtyDaysMs,
-          "end_unix_ms": nowMs,
-        ]
-      )
-      recentCaptureSessions = Self.captureSessionSummaries(from: value)
-    } catch {
+  func refreshRecentCaptureSessions(force: Bool = false) {
+    refreshDatabaseExistsCache(force: false)
+    guard cachedDatabaseExists else {
       if recentCaptureSessions.isEmpty {
         recentCaptureSessions = ["No stored capture sessions"]
+      }
+      return
+    }
+    let now = Date()
+    guard force || now.timeIntervalSince(lastRecentCaptureSessionsRefreshedAt) >= Self.recentCaptureSessionsRefreshInterval else {
+      return
+    }
+    guard !recentCaptureSessionsRefreshInFlight else {
+      return
+    }
+
+    let nowMs = Self.unixMilliseconds(Date())
+    let thirtyDaysMs: Int64 = 30 * 24 * 60 * 60 * 1_000
+    let path = databasePath
+    recentCaptureSessionsRefreshInFlight = true
+    backgroundQueue.async { [weak self] in
+      let result: Result<[String], Error> = Result {
+        let value = try GooseRustBridge().request(
+          method: "capture.list_sessions",
+          args: [
+            "database_path": path,
+            "start_unix_ms": nowMs - thirtyDaysMs,
+            "end_unix_ms": nowMs,
+          ]
+        )
+        return Self.captureSessionSummaries(from: value)
+      }
+      DispatchQueue.main.async { [weak self] in
+        guard let self else {
+          return
+        }
+        self.recentCaptureSessionsRefreshInFlight = false
+        self.lastRecentCaptureSessionsRefreshedAt = Date()
+        switch result {
+        case .success(let sessions):
+          self.recentCaptureSessions = sessions
+        case .failure:
+          if self.recentCaptureSessions.isEmpty {
+            self.recentCaptureSessions = ["No stored capture sessions"]
+          }
+          self.refreshDatabaseExistsCache(force: true)
+        }
       }
     }
   }
@@ -238,7 +299,8 @@ final class MoreDataStore: ObservableObject {
       captureSessionStartedAt = now
       captureFrameCount = 0
       captureStatus = "Started \(Self.shortBridgeSummary(value))"
-      refreshRecentCaptureSessions()
+      refreshDatabaseExistsCache(force: true)
+      refreshRecentCaptureSessions(force: true)
     } catch {
       captureStatus = "Start failed: \(Self.errorSummary(error))"
     }
@@ -264,7 +326,8 @@ final class MoreDataStore: ObservableObject {
       captureSessionID = nil
       captureSessionStartedAt = nil
       captureFrameCount = 0
-      refreshRecentCaptureSessions()
+      refreshDatabaseExistsCache(force: true)
+      refreshRecentCaptureSessions(force: true)
     } catch {
       captureStatus = "Finish failed: \(Self.errorSummary(error))"
     }
@@ -295,7 +358,17 @@ final class MoreDataStore: ObservableObject {
   }
 
   var databaseExists: Bool {
-    FileManager.default.fileExists(atPath: databasePath)
+    refreshDatabaseExistsCache(force: false)
+    return cachedDatabaseExists
+  }
+
+  private func refreshDatabaseExistsCache(force: Bool) {
+    let now = Date()
+    guard force || now.timeIntervalSince(databaseExistsCachedAt) >= Self.databaseExistsCacheInterval else {
+      return
+    }
+    cachedDatabaseExists = FileManager.default.fileExists(atPath: databasePath)
+    databaseExistsCachedAt = now
   }
 
   func runStorageCheck() {

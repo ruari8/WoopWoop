@@ -32,12 +32,7 @@ extension GooseBLEClient {
         terminal: false,
         failed: false
       )
-      record(
-        level: .debug,
-        source: "ble.sync",
-        title: "historical_sync.packet",
-        body: "\(characteristic.uuid.uuidString) count=\(historicalPacketsReceivedThisSync)"
-      )
+      recordHistoricalPacketReceipt(characteristic: characteristic, at: Date())
     case V5PacketType.metadata, V5PacketType.puffinMetadata:
       handleHistoricalMetadata(payload)
     default:
@@ -53,6 +48,29 @@ extension GooseBLEClient {
 
     lastHistoricalPacketCountPublishedAt = date
     historicalPacketCount = historicalPacketsReceivedThisSync
+  }
+
+  func recordHistoricalPacketReceipt(characteristic: CBCharacteristic, at date: Date) {
+    let shouldLog = historicalPacketsReceivedThisSync <= Self.historicalPacketInitialLogCount
+      || date.timeIntervalSince(lastHistoricalPacketLogAt) >= Self.historicalPacketLogInterval
+    guard shouldLog else {
+      coalescedHistoricalPacketLogCount += 1
+      return
+    }
+
+    let coalesced = coalescedHistoricalPacketLogCount
+    coalescedHistoricalPacketLogCount = 0
+    lastHistoricalPacketLogAt = date
+    var body = "\(characteristic.uuid.uuidString) count=\(historicalPacketsReceivedThisSync)"
+    if coalesced > 0 {
+      body += " coalesced=\(coalesced) interval=\(Int(Self.historicalPacketLogInterval.rounded()))s"
+    }
+    record(
+      level: .debug,
+      source: "ble.sync",
+      title: "historical_sync.packet",
+      body: body
+    )
   }
 
   func handleAlarmValue(_ value: Data, characteristic: CBCharacteristic) {

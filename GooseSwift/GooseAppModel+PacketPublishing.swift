@@ -571,8 +571,20 @@ extension GooseAppModel {
     packetUIStateAggregator.set(.realtimeStatusPacketStatus, status)
   }
 
-  func publishPipelinePerformanceStatus(_ status: String) {
-    packetUIStateAggregator.set(.performancePipelineStatus, status)
+  func shouldPublishPipelinePerformanceStatus(now: Date = Date()) -> Bool {
+    guard now.timeIntervalSince(lastPipelinePerformanceStatusPublishedAt) >= Self.pipelinePerformanceStatusPublishInterval else {
+      return false
+    }
+    lastPipelinePerformanceStatusPublishedAt = now
+    return true
+  }
+
+  func publishPipelinePerformanceStatus(_ status: @autoclosure () -> String) {
+    let now = Date()
+    guard shouldPublishPipelinePerformanceStatus(now: now) else {
+      return
+    }
+    packetUIStateAggregator.set(.performancePipelineStatus, status())
   }
 
   func recordRustBridgeTiming(
@@ -586,23 +598,32 @@ extension GooseAppModel {
     let boundaryMS = Double(timing.boundaryMicroseconds) / 1_000
     let encodeMS = Double(timing.requestEncodeMicroseconds) / 1_000
     let decodeMS = Double(timing.responseDecodeMicroseconds) / 1_000
-    var status = String(
-      format: "rust %@ %.1fms | bridge %.1fms e%.1f/d%.1f | frames %d | parseQ %d hwm %d",
-      timing.method,
-      elapsedMS,
-      boundaryMS,
-      encodeMS,
-      decodeMS,
-      frameCount,
-      queueDepth,
-      queueHighWatermark
-    )
-    if let detail, !detail.isEmpty {
-      status += " | \(detail)"
+    func makeStatus() -> String {
+      var status = String(
+        format: "rust %@ %.1fms | bridge %.1fms e%.1f/d%.1f | frames %d | parseQ %d hwm %d",
+        timing.method,
+        elapsedMS,
+        boundaryMS,
+        encodeMS,
+        decodeMS,
+        frameCount,
+        queueDepth,
+        queueHighWatermark
+      )
+      if let detail, !detail.isEmpty {
+        status += " | \(detail)"
+      }
+      return status
     }
-    publishPipelinePerformanceStatus(status)
 
+    var publishedStatus: String?
     let now = Date()
+    if shouldPublishPipelinePerformanceStatus(now: now) {
+      let status = makeStatus()
+      publishedStatus = status
+      packetUIStateAggregator.set(.performancePipelineStatus, status)
+    }
+
     pipelinePerformanceLogLock.lock()
     let shouldLog = now.timeIntervalSince(lastPipelinePerformanceLoggedAt) >= Self.pipelinePerformanceLogInterval
     if shouldLog {
@@ -612,6 +633,7 @@ extension GooseAppModel {
     guard shouldLog else {
       return
     }
+    let status = publishedStatus ?? makeStatus()
     ble.record(
       level: elapsedMS >= 50 || queueDepth > 4 ? .warn : .debug,
       source: "performance.pipeline",

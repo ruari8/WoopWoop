@@ -1,8 +1,13 @@
 import SwiftUI
 
 struct MoreDebugView: View {
-  @EnvironmentObject private var model: GooseAppModel
-  @EnvironmentObject private var packetMonitor: PacketMonitorModel
+  let model: GooseAppModel
+  let ble: GooseBLEClient
+  @ObservedObject var packetMonitor: PacketMonitorModel
+  @ObservedObject var healthCapture: GooseHealthCaptureStatusStore
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var deviceStatus: GooseDeviceStatusStore
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
   @ObservedObject var store: MoreDataStore
   @AppStorage(OnboardingStorage.onboardingComplete) private var onboardingComplete = false
   @AppStorage(OnboardingStorage.onboardingRedoRequested) private var onboardingRedoRequested = false
@@ -42,27 +47,27 @@ struct MoreDebugView: View {
       Section("Health Packet Capture") {
         MoreInfoRow(
           title: "Connection",
-          value: "\(model.ble.connectionState) | \(model.ble.activeDeviceName)",
+          value: "\(connectionStatus.connectionState) | \(deviceStatus.activeDeviceName)",
           systemImage: "sensor.tag.radiowaves.forward",
-          status: model.ble.connectionState == "ready" ? .ready : .blocked
+          status: connectionStatus.connectionState == "ready" ? .ready : .blocked
         )
         MoreInfoRow(
           title: "Session",
-          value: model.healthPacketCaptureStatus,
+          value: healthCapture.healthPacketCaptureStatus,
           systemImage: "record.circle",
           status: self.healthPacketCaptureStatus
         )
         MoreInfoRow(
           title: "Targets",
-          value: model.healthPacketCaptureTargetSummary,
+          value: healthCapture.healthPacketCaptureTargetSummary,
           systemImage: "scope",
-          status: model.healthPacketCaptureFamilyRows.isEmpty ? .pending : .ready
+          status: healthCapture.healthPacketCaptureFamilyRows.isEmpty ? .pending : .ready
         )
         MoreInfoRow(
           title: "Last Packet",
-          value: model.healthPacketCaptureLastPacketSummary,
+          value: healthCapture.healthPacketCaptureLastPacketSummary,
           systemImage: "waveform.path.ecg.rectangle",
-          status: model.healthPacketCaptureLastPacketSummary == "No packets captured" ? .pending : .ready
+          status: healthCapture.healthPacketCaptureLastPacketSummary == "No packets captured" ? .pending : .ready
         )
         MoreInfoRow(
           title: "Live Data",
@@ -72,24 +77,24 @@ struct MoreDebugView: View {
         )
         MoreInfoRow(
           title: "Historical",
-          value: "\(model.ble.historicalSyncStatus) | packets \(model.ble.historicalPacketCount)",
+          value: "\(historicalSync.status) | packets \(historicalSync.packetCount)",
           systemImage: "arrow.triangle.2.circlepath",
-          status: model.ble.isHistoricalSyncing ? .pending : (model.ble.lastHistoricalSyncCompletedAt == nil ? .pending : .ready)
+          status: historicalSync.isSyncing ? .pending : (historicalSync.completedAt == nil ? .pending : .ready)
         )
         MoreInfoRow(
           title: "RR Watch",
-          value: model.respiratoryPacketWatchStatus,
+          value: healthCapture.respiratoryPacketWatchStatus,
           systemImage: "lungs",
           status: self.respiratoryPacketWatchStatus
         )
         MoreActionRow(
-          title: model.healthPacketCaptureSessionID == nil ? "Start Walk Capture" : "Stop Capture",
-          detail: model.healthPacketCaptureSessionID == nil ? "Starts a 30 minute WHOOP movement, HR, GPS, and activity candidate capture" : model.healthPacketCaptureTargetSummary,
-          systemImage: model.healthPacketCaptureSessionID == nil ? "figure.walk.circle" : "stop.circle",
+          title: healthCapture.healthPacketCaptureSessionID == nil ? "Start Walk Capture" : "Stop Capture",
+          detail: healthCapture.healthPacketCaptureSessionID == nil ? "Starts a 30 minute WHOOP movement, HR, GPS, and activity candidate capture" : healthCapture.healthPacketCaptureTargetSummary,
+          systemImage: healthCapture.healthPacketCaptureSessionID == nil ? "figure.walk.circle" : "stop.circle",
           status: self.healthPacketCaptureActionStatus,
-          disabled: model.healthPacketCaptureSessionID == nil && model.ble.connectionState != "ready"
+          disabled: healthCapture.healthPacketCaptureSessionID == nil && connectionStatus.connectionState != "ready"
         ) {
-          if model.healthPacketCaptureSessionID == nil {
+          if healthCapture.healthPacketCaptureSessionID == nil {
             model.startHealthPacketCapture()
           } else {
             model.stopHealthPacketCapture()
@@ -100,7 +105,7 @@ struct MoreDebugView: View {
           detail: "Full-rate K10/K11/R17/R21/K25/K26 streams into the capture DB",
           systemImage: "waveform.path.ecg.rectangle",
           status: self.healthPacketCaptureActionStatus,
-          disabled: model.healthPacketCaptureSessionID != nil || model.ble.connectionState != "ready"
+          disabled: healthCapture.healthPacketCaptureSessionID != nil || connectionStatus.connectionState != "ready"
         ) {
           model.startPhysiologyPacketCapture()
         }
@@ -109,26 +114,26 @@ struct MoreDebugView: View {
           detail: "Event 17 plus K18/K24 history",
           systemImage: "thermometer.medium",
           status: self.temperatureCaptureActionStatus,
-          disabled: model.healthPacketCaptureSessionID != nil
-            || model.ble.connectionState != "ready"
-            || (!model.ble.canSyncHistorical && !model.ble.isHistoricalSyncing)
+          disabled: healthCapture.healthPacketCaptureSessionID != nil
+            || connectionStatus.connectionState != "ready"
+            || (!historicalSync.canSyncHistorical && !historicalSync.isSyncing)
         ) {
           model.startTemperaturePacketCapture()
         }
         MoreActionRow(
-          title: model.respiratoryPacketWatchActive ? "Stop RR Packet Watch" : "Watch K18 RR Packets",
-          detail: model.respiratoryPacketWatchStatus,
+          title: healthCapture.respiratoryPacketWatchActive ? "Stop RR Packet Watch" : "Watch K18 RR Packets",
+          detail: healthCapture.respiratoryPacketWatchStatus,
           systemImage: "lungs",
           status: self.respiratoryPacketWatchStatus,
-          disabled: !model.respiratoryPacketWatchActive && model.ble.connectionState != "ready"
+          disabled: !healthCapture.respiratoryPacketWatchActive && connectionStatus.connectionState != "ready"
         ) {
-          if model.respiratoryPacketWatchActive {
+          if healthCapture.respiratoryPacketWatchActive {
             model.stopRespiratoryPacketWatch()
           } else {
             model.startRespiratoryPacketWatch()
           }
         }
-        if model.healthPacketCaptureFamilyRows.isEmpty {
+        if healthCapture.healthPacketCaptureFamilyRows.isEmpty {
           MoreInfoRow(
             title: "Families",
             value: "No decoded packet families in this capture yet",
@@ -136,7 +141,7 @@ struct MoreDebugView: View {
             status: .pending
           )
         } else {
-          ForEach(model.healthPacketCaptureFamilyRows.prefix(10)) { family in
+          ForEach(healthCapture.healthPacketCaptureFamilyRows.prefix(10)) { family in
             MoreInfoRow(
               title: "\(family.title) x\(family.count)",
               value: family.detail,
@@ -150,9 +155,9 @@ struct MoreDebugView: View {
       Section("WHOOP Movement Test") {
         MoreInfoRow(
           title: "Connection",
-          value: "\(model.ble.connectionState) | \(model.ble.activeDeviceName)",
+          value: "\(connectionStatus.connectionState) | \(deviceStatus.activeDeviceName)",
           systemImage: "sensor.tag.radiowaves.forward",
-          status: model.ble.connectionState == "ready" ? .ready : .blocked
+          status: connectionStatus.connectionState == "ready" ? .ready : .blocked
         )
         MoreInfoRow(
           title: "Last Packet",
@@ -162,16 +167,16 @@ struct MoreDebugView: View {
         )
         MoreInfoRow(
           title: "Detector",
-          value: model.activityDetectionStatus,
+          value: healthCapture.activityDetectionStatus,
           systemImage: "figure.run.circle",
           status: activityDetectorStatus
         )
         MoreActionRow(
-          title: model.movementPacketValidationIsRunning ? "Listening For Movement" : "Run Movement Packet Test",
-          detail: model.movementPacketValidationStatus,
+          title: healthCapture.movementPacketValidationIsRunning ? "Listening For Movement" : "Run Movement Packet Test",
+          detail: healthCapture.movementPacketValidationStatus,
           systemImage: "dot.radiowaves.left.and.right",
           status: movementPacketTestStatus,
-          disabled: model.movementPacketValidationIsRunning
+          disabled: healthCapture.movementPacketValidationIsRunning
         ) {
           model.startMovementPacketValidationTest()
         }
@@ -198,15 +203,15 @@ struct MoreDebugView: View {
         )
         MoreInfoRow(
           title: "Capture",
-          value: "\(model.ble.physiologyCaptureStatus) | \(model.ble.lastPhysiologyCommandSummary)",
+          value: "\(ble.physiologyCaptureStatus) | \(ble.lastPhysiologyCommandSummary)",
           systemImage: "dot.radiowaves.left.and.right",
-          status: model.ble.physiologyCaptureStatus == "Not started" ? .pending : .stale
+          status: ble.physiologyCaptureStatus == "Not started" ? .pending : .stale
         )
         MoreInfoRow(
           title: "High Frequency Sync",
-          value: "\(model.ble.highFrequencyHistorySyncDisplaySummary) | \(model.ble.lastHighFrequencyHistorySyncResponse)",
+          value: "\(ble.highFrequencyHistorySyncDisplaySummary) | \(ble.lastHighFrequencyHistorySyncResponse)",
           systemImage: "bolt.horizontal",
-          status: model.ble.highFrequencyHistorySyncActive ? .ready : .pending
+          status: ble.highFrequencyHistorySyncActive ? .ready : .pending
         )
         MoreInfoRow(
           title: "History Temp",
@@ -258,8 +263,8 @@ struct MoreDebugView: View {
           title: "Start Movement + HR Capture",
           detail: "Requests live HR plus K10/K11 movement streams",
           systemImage: "play.circle",
-          status: model.ble.connectionState == "ready" ? .pending : .blocked,
-          disabled: model.ble.connectionState != "ready"
+          status: connectionStatus.connectionState == "ready" ? .pending : .blocked,
+          disabled: connectionStatus.connectionState != "ready"
         ) {
           model.startMovementHeartRateCapture()
         }
@@ -267,19 +272,19 @@ struct MoreDebugView: View {
           title: "Stop Movement + HR Capture",
           detail: "Turns live HR plus K10/K11 streams off",
           systemImage: "stop.circle",
-          status: model.ble.connectionState == "ready" ? .pending : .blocked,
-          disabled: model.ble.connectionState != "ready"
+          status: connectionStatus.connectionState == "ready" ? .pending : .blocked,
+          disabled: connectionStatus.connectionState != "ready"
         ) {
           model.stopMovementHeartRateCapture()
         }
         MoreActionRow(
-          title: model.ble.highFrequencyHistorySyncActive ? "Exit High Frequency Sync" : "Enter High Frequency Sync",
+          title: ble.highFrequencyHistorySyncActive ? "Exit High Frequency Sync" : "Enter High Frequency Sync",
           detail: "WHOOP Smart Alarm history-sync mode: 180s interval for 2h",
           systemImage: "bolt.horizontal",
-          status: model.ble.canWriteHighFrequencyHistorySync ? .pending : .blocked,
-          disabled: !model.ble.canWriteHighFrequencyHistorySync
+          status: ble.canWriteHighFrequencyHistorySync ? .pending : .blocked,
+          disabled: !ble.canWriteHighFrequencyHistorySync
         ) {
-          if model.ble.highFrequencyHistorySyncActive {
+          if ble.highFrequencyHistorySyncActive {
             model.exitHighFrequencyHistorySync()
           } else {
             model.enterHighFrequencyHistorySync()
@@ -290,13 +295,13 @@ struct MoreDebugView: View {
       Section("Research BT Commands") {
         MoreInfoRow(
           title: "Connection",
-          value: "\(model.ble.connectionState) | \(model.ble.activeDeviceName)",
+          value: "\(connectionStatus.connectionState) | \(deviceStatus.activeDeviceName)",
           systemImage: "sensor.tag.radiowaves.forward",
-          status: model.ble.connectionState == "ready" ? .ready : .blocked
+          status: connectionStatus.connectionState == "ready" ? .ready : .blocked
         )
         MoreInfoRow(
           title: "Last Result",
-          value: model.ble.debugCommandStatus,
+          value: ble.debugCommandStatus,
           systemImage: "terminal",
           status: self.debugCommandStatusKind
         )
@@ -306,16 +311,16 @@ struct MoreDebugView: View {
           systemImage: "link",
           status: .pending
         )
-        ForEach(model.ble.debugResearchCommands) { command in
+        ForEach(ble.debugResearchCommands) { command in
           if command.canSendFromButton {
             MoreActionRow(
               title: "Send \(command.title)",
               detail: self.debugCommandDetail(command),
               systemImage: self.debugCommandIcon(command),
               status: self.debugCommandActionStatus(command),
-              disabled: model.ble.connectionState != "ready"
+              disabled: connectionStatus.connectionState != "ready"
             ) {
-              _ = model.ble.sendDebugResearchCommand(id: command.id)
+              _ = ble.sendDebugResearchCommand(id: command.id)
             }
           } else {
             MoreInfoRow(
@@ -326,7 +331,7 @@ struct MoreDebugView: View {
             )
           }
         }
-        if model.ble.debugCommandResponses.isEmpty {
+        if ble.debugCommandResponses.isEmpty {
           MoreInfoRow(
             title: "Responses",
             value: "No debug command responses yet",
@@ -334,7 +339,7 @@ struct MoreDebugView: View {
             status: .pending
           )
         } else {
-          ForEach(Array(model.ble.debugCommandResponses.prefix(12))) { response in
+          ForEach(Array(ble.debugCommandResponses.prefix(12))) { response in
             MoreInfoRow(
               title: response.title,
               value: self.debugCommandResponseDetail(response),
@@ -401,7 +406,7 @@ struct MoreDebugView: View {
 #if DEBUG
       Section("Developer") {
         Button {
-          model.ble.previewHelloWorldToast()
+          ble.previewHelloWorldToast()
         } label: {
           Label("Hello World Toast", systemImage: "bell.badge")
         }
@@ -434,86 +439,86 @@ struct MoreDebugView: View {
   }
 
   private var movementPacketTestStatus: MoreStatusKind {
-    if model.movementPacketValidationIsRunning {
+    if healthCapture.movementPacketValidationIsRunning {
       return .pending
     }
-    if model.movementPacketValidationStatus.hasPrefix("Passed") {
+    if healthCapture.movementPacketValidationStatus.hasPrefix("Passed") {
       return .ready
     }
-    if model.movementPacketValidationStatus.hasPrefix("Failed") || model.movementPacketValidationStatus.hasPrefix("Connect WHOOP") {
+    if healthCapture.movementPacketValidationStatus.hasPrefix("Failed") || healthCapture.movementPacketValidationStatus.hasPrefix("Connect WHOOP") {
       return .blocked
     }
     return .pending
   }
 
   private var activityDetectorStatus: MoreStatusKind {
-    if model.activityDetectionStatus.contains("Candidate") || model.activityDetectionStatus.contains("Movement") {
+    if healthCapture.activityDetectionStatus.contains("Candidate") || healthCapture.activityDetectionStatus.contains("Movement") {
       return .ready
     }
     return packetMonitor.movementPacketStatus == "No movement packets" ? .pending : .ready
   }
 
   private var healthPacketCaptureStatus: MoreStatusKind {
-    if model.healthPacketCaptureSessionID != nil {
+    if healthCapture.healthPacketCaptureSessionID != nil {
       return .pending
     }
-    if model.healthPacketCaptureStatus.hasPrefix("Stopped") {
+    if healthCapture.healthPacketCaptureStatus.hasPrefix("Stopped") {
       return .ready
     }
-    if model.healthPacketCaptureStatus.contains("failed") || model.healthPacketCaptureStatus.hasPrefix("Connect WHOOP") {
+    if healthCapture.healthPacketCaptureStatus.contains("failed") || healthCapture.healthPacketCaptureStatus.hasPrefix("Connect WHOOP") {
       return .blocked
     }
     return .pending
   }
 
   private var healthPacketCaptureActionStatus: MoreStatusKind {
-    if model.healthPacketCaptureSessionID != nil {
+    if healthCapture.healthPacketCaptureSessionID != nil {
       return .pending
     }
-    return model.ble.connectionState == "ready" ? .pending : .blocked
+    return connectionStatus.connectionState == "ready" ? .pending : .blocked
   }
 
   private var temperatureCaptureActionStatus: MoreStatusKind {
-    if model.healthPacketCaptureSessionID != nil {
+    if healthCapture.healthPacketCaptureSessionID != nil {
       return .blocked
     }
-    if model.ble.connectionState != "ready" {
+    if connectionStatus.connectionState != "ready" {
       return .blocked
     }
-    return model.ble.canSyncHistorical || model.ble.isHistoricalSyncing ? .pending : .stale
+    return historicalSync.canSyncHistorical || historicalSync.isSyncing ? .pending : .stale
   }
 
   private var respiratoryPacketWatchStatus: MoreStatusKind {
-    if model.respiratoryPacketWatchActive {
+    if healthCapture.respiratoryPacketWatchActive {
       return .pending
     }
-    if model.respiratoryPacketWatchStatus.hasPrefix("Found K18") {
+    if healthCapture.respiratoryPacketWatchStatus.hasPrefix("Found K18") {
       return .ready
     }
-    if model.respiratoryPacketWatchStatus.hasPrefix("Connect WHOOP") {
+    if healthCapture.respiratoryPacketWatchStatus.hasPrefix("Connect WHOOP") {
       return .blocked
     }
-    if model.respiratoryPacketWatchStatus.hasPrefix("Timed out") {
+    if healthCapture.respiratoryPacketWatchStatus.hasPrefix("Timed out") {
       return .stale
     }
-    return model.ble.connectionState == "ready" ? .pending : .blocked
+    return connectionStatus.connectionState == "ready" ? .pending : .blocked
   }
 
   private var debugCommandStatusKind: MoreStatusKind {
-    if model.ble.debugCommandStatus.contains("SUCCESS") || model.ble.debugCommandStatus.contains("ok:") {
+    if ble.debugCommandStatus.contains("SUCCESS") || ble.debugCommandStatus.contains("ok:") {
       return .ready
     }
-    if model.ble.debugCommandStatus.contains("blocked")
-        || model.ble.debugCommandStatus.contains("Unknown")
-        || model.ble.debugCommandStatus.contains("failed")
-        || model.ble.debugCommandStatus.contains("timeout") {
+    if ble.debugCommandStatus.contains("blocked")
+        || ble.debugCommandStatus.contains("Unknown")
+        || ble.debugCommandStatus.contains("failed")
+        || ble.debugCommandStatus.contains("timeout") {
       return .stale
     }
-    return model.ble.connectionState == "ready" ? .pending : .blocked
+    return connectionStatus.connectionState == "ready" ? .pending : .blocked
   }
 
   private func debugCommandActionStatus(_ command: GooseDebugCommandDefinition) -> MoreStatusKind {
-    if model.ble.connectionState != "ready" {
+    if connectionStatus.connectionState != "ready" {
       return .blocked
     }
     return command.risk == "read" ? .pending : .stale

@@ -54,19 +54,24 @@ struct MoreCommandGroup: Identifiable {
 }
 
 struct MoreCaptureView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
+  let ble: GooseBLEClient
   @EnvironmentObject private var messageStore: GooseMessageStore
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var deviceStatus: GooseDeviceStatusStore
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
+  @ObservedObject var overnightGuard: GooseOvernightGuardStatusStore
   @ObservedObject var store: MoreDataStore
 
   var body: some View {
     List {
       Section("Session") {
         MoreInfoRow(title: "Capture Session", value: store.captureSessionSummary(), systemImage: "record.circle", status: store.captureSessionID == nil ? .pending : .ready)
-        MoreInfoRow(title: "Live Notifications", value: store.liveNotificationCaptureSummary(ble: model.ble), systemImage: "dot.radiowaves.left.and.right", status: model.ble.connectionState == "ready" ? .ready : .pending)
+        MoreInfoRow(title: "Live Notifications", value: store.liveNotificationCaptureSummary(ble: ble), systemImage: "dot.radiowaves.left.and.right", status: connectionStatus.connectionState == "ready" ? .ready : .pending)
         MoreInfoRow(title: "Selected Device", value: selectedDeviceSummary, systemImage: "sensor.tag.radiowaves.forward", status: selectedDeviceStatus)
         Button {
           if store.captureSessionID == nil {
-            store.startCapture(ble: model.ble)
+            store.startCapture(ble: ble)
           } else {
             store.stopCapture()
           }
@@ -78,85 +83,85 @@ struct MoreCaptureView: View {
       Section("Overnight Guard") {
         MoreInfoRow(
           title: "Status",
-          value: model.overnightGuardStatus,
+          value: overnightGuard.status,
           systemImage: "moon",
           status: overnightGuardStatus
         )
         MoreInfoRow(
           title: "Sleep Readiness",
-          value: model.overnightGuardReadinessSummary,
+          value: overnightGuard.readinessSummary,
           systemImage: "bed.double",
           status: overnightGuardReadinessStatus
         )
         MoreInfoRow(
           title: "Raw Notifications",
-          value: "\(model.overnightGuardRawNotificationCount) | \(model.overnightGuardLastPacketSummary)",
+          value: "\(overnightGuard.rawNotificationCount) | \(overnightGuard.lastPacketSummary)",
           systemImage: "externaldrive",
-          status: model.overnightGuardRawNotificationCount > 0 ? .ready : .pending
+          status: overnightGuard.rawNotificationCount > 0 ? .ready : .pending
         )
         MoreInfoRow(
           title: "Range Polls",
-          value: "polls \(model.overnightGuardRangePollCount) | success \(model.overnightGuardSuccessfulRangePollCount) / responses \(model.overnightGuardRangeTelemetryCount) | \(model.ble.lastHistoricalRangeCommandStatus)",
+          value: "polls \(overnightGuard.rangePollCount) | success \(overnightGuard.successfulRangePollCount) / responses \(overnightGuard.rangeTelemetryCount) | \(historicalSync.lastRangeCommandStatus)",
           systemImage: "arrow.triangle.2.circlepath",
-          status: model.overnightGuardSuccessfulRangePollCount > 0 ? .ready : (model.overnightGuardRangeTelemetryCount > 0 ? .stale : .pending)
+          status: overnightGuard.successfulRangePollCount > 0 ? .ready : (overnightGuard.rangeTelemetryCount > 0 ? .stale : .pending)
         )
         MoreInfoRow(
           title: "Command Writes",
-          value: "\(model.overnightGuardCommandWriteCount) persisted writes",
+          value: "\(overnightGuard.commandWriteCount) persisted writes",
           systemImage: "arrow.up.doc",
-          status: model.overnightGuardCommandWriteCount > 0 ? .ready : .pending
+          status: overnightGuard.commandWriteCount > 0 ? .ready : .pending
         )
         MoreInfoRow(
           title: "Targets",
-          value: model.overnightGuardTargetSummary,
+          value: overnightGuard.targetSummary,
           systemImage: "scope",
-          status: model.overnightGuardTargetSummary.contains("K18 0 | K24 0 | K25 0 | K26 0 | packet47 0 | event17 0 | event29 0 | metadata49 0 | metadata56 0") ? .pending : .ready
+          status: overnightGuard.targetSummary.contains("K18 0 | K24 0 | K25 0 | K26 0 | packet47 0 | event17 0 | event29 0 | metadata49 0 | metadata56 0") ? .pending : .ready
         )
         MoreInfoRow(
           title: "Historical Order",
-          value: model.overnightGuardHistoricalOrderSummary,
+          value: overnightGuard.historicalOrderSummary,
           systemImage: "timeline.selection",
-          status: model.overnightGuardHistoricalOrderSummary.hasPrefix("no packet47") ? .pending : .ready
+          status: overnightGuard.historicalOrderSummary.hasPrefix("no packet47") ? .pending : .ready
         )
         MoreInfoRow(
           title: "Spool",
-          value: "\(model.overnightGuardSpoolSizeSummary) | \(model.overnightGuardSpoolPath)",
+          value: "\(overnightGuard.spoolSizeSummary) | \(overnightGuard.spoolPath)",
           systemImage: "folder",
-          status: model.overnightGuardSpoolPath == "No overnight spool" ? .pending : .ready
+          status: overnightGuard.spoolPath == "No overnight spool" ? .pending : .ready
         )
         MoreInfoRow(
           title: "SQLite Mirror",
-          value: model.overnightGuardSQLiteMirrorSummary,
+          value: overnightGuard.sqliteMirrorSummary,
           systemImage: "externaldrive.badge.checkmark",
           status: overnightGuardSQLiteMirrorStatus
         )
         MoreInfoRow(
           title: "Power",
-          value: model.overnightGuardPowerSummary,
+          value: overnightGuard.powerSummary,
           systemImage: "battery.100percent",
-          status: model.overnightGuardPowerSummary.localizedCaseInsensitiveContains("Low Power ON") ? .stale : .ready
+          status: overnightGuard.powerSummary.localizedCaseInsensitiveContains("Low Power ON") ? .stale : .ready
         )
         MoreInfoRow(
           title: "Watchdog",
-          value: model.overnightGuardWatchdogSummary,
+          value: overnightGuard.watchdogSummary,
           systemImage: "checkmark.shield",
-          status: model.overnightGuardWatchdogSummary.localizedCaseInsensitiveContains("warning") || model.overnightGuardWatchdogSummary.localizedCaseInsensitiveContains("No raw") ? .stale : .ready
+          status: overnightGuard.watchdogSummary.localizedCaseInsensitiveContains("warning") || overnightGuard.watchdogSummary.localizedCaseInsensitiveContains("No raw") ? .stale : .ready
         )
         MoreInfoRow(
           title: "Event Log",
-          value: "\(model.overnightGuardEventLogCount) persisted events",
+          value: "\(overnightGuard.eventLogCount) persisted events",
           systemImage: "list.bullet.rectangle",
-          status: model.overnightGuardEventLogCount > 0 ? .ready : .pending
+          status: overnightGuard.eventLogCount > 0 ? .ready : .pending
         )
         MoreInfoRow(
           title: "Final Export",
-          value: model.overnightGuardExportStatus,
+          value: overnightGuard.exportStatus,
           systemImage: "square.and.arrow.up",
           status: overnightGuardExportStatus
         )
         MoreInfoRow(
           title: "WHOOP App",
-          value: model.overnightGuardWarning,
+          value: overnightGuard.warning,
           systemImage: "exclamationmark.triangle",
           status: .stale
         )
@@ -166,42 +171,42 @@ struct MoreCaptureView: View {
           } label: {
             Label("Start Guard", systemImage: "moon")
           }
-          .disabled(model.overnightGuardActive || model.ble.connectionState != "ready")
+          .disabled(overnightGuard.active || connectionStatus.connectionState != "ready")
 
           Button {
             model.requestOvernightGuardFinalSync()
           } label: {
             Label("Final Sync", systemImage: "arrow.triangle.2.circlepath")
           }
-          .disabled(!model.overnightGuardActive || model.ble.isHistoricalSyncing)
+          .disabled(!overnightGuard.active || historicalSync.isSyncing)
         }
-        if model.overnightGuardExportInProgress {
+        if overnightGuard.exportInProgress {
           ProgressView("Saving final sync bundle")
         }
-        if let exportURL = model.overnightGuardExportURL {
+        if let exportURL = overnightGuard.exportURL {
           ShareLink(item: exportURL) {
             Label("AirDrop Final Bundle", systemImage: "square.and.arrow.up")
           }
         }
-        if let exportManifestURL = model.overnightGuardExportManifestURL {
+        if let exportManifestURL = overnightGuard.exportManifestURL {
           ShareLink(item: exportManifestURL) {
             Label("AirDrop Export Manifest", systemImage: "list.bullet.rectangle")
           }
         }
-        if model.overnightGuardCanExportLastSession {
+        if overnightGuard.canExportLastSession {
           Button {
             model.exportLastOvernightGuardBundle()
           } label: {
             Label("Export Last Guard", systemImage: "externaldrive.badge.plus")
           }
-          .disabled(model.overnightGuardActive || model.overnightGuardExportInProgress)
+          .disabled(overnightGuard.active || overnightGuard.exportInProgress)
         }
         Button(role: .destructive) {
           model.stopOvernightGuard()
         } label: {
           Label("Stop Guard", systemImage: "stop.circle")
         }
-        .disabled(!model.overnightGuardActive)
+        .disabled(!overnightGuard.active)
       }
 
       Section("Recent Notifications And Events") {
@@ -247,32 +252,32 @@ struct MoreCaptureView: View {
   }
 
   private var selectedDeviceSummary: String {
-    if let selected = model.ble.discoveredDevices.first(where: { $0.id == model.ble.selectedDeviceID }) {
+    if let selected = connectionStatus.discoveredDevices.first(where: { $0.id == connectionStatus.selectedDeviceID }) {
       return "\(selected.name) RSSI \(selected.rssi)"
     }
-    return model.ble.activeDeviceName
+    return deviceStatus.activeDeviceName
   }
 
   private var selectedDeviceStatus: MoreStatusKind {
-    model.ble.selectedDeviceID == nil && model.ble.connectionState != "ready" ? .pending : .ready
+    connectionStatus.selectedDeviceID == nil && connectionStatus.connectionState != "ready" ? .pending : .ready
   }
 
   private var overnightGuardStatus: MoreStatusKind {
-    if model.overnightGuardActive {
+    if overnightGuard.active {
       return .ready
     }
-    if model.overnightGuardStatus.localizedCaseInsensitiveContains("failed")
-      || model.overnightGuardStatus.localizedCaseInsensitiveContains("blocked") {
+    if overnightGuard.status.localizedCaseInsensitiveContains("failed")
+      || overnightGuard.status.localizedCaseInsensitiveContains("blocked") {
       return .blocked
     }
-    if model.overnightGuardStatus.hasPrefix("Stopped") {
+    if overnightGuard.status.hasPrefix("Stopped") {
       return .stale
     }
     return .pending
   }
 
   private var overnightGuardReadinessStatus: MoreStatusKind {
-    switch model.overnightGuardReadinessStatus {
+    switch overnightGuard.readinessStatus {
     case "ready":
       return .ready
     case "blocked":
@@ -287,7 +292,7 @@ struct MoreCaptureView: View {
   }
 
   private var overnightGuardSQLiteMirrorStatus: MoreStatusKind {
-    let summary = model.overnightGuardSQLiteMirrorSummary
+    let summary = overnightGuard.sqliteMirrorSummary
     if summary.localizedCaseInsensitiveContains("warning") {
       return .stale
     }
@@ -301,15 +306,15 @@ struct MoreCaptureView: View {
   }
 
   private var overnightGuardExportStatus: MoreStatusKind {
-    if model.overnightGuardExportInProgress {
+    if overnightGuard.exportInProgress {
       return .pending
     }
-    if model.overnightGuardExportStatus.localizedCaseInsensitiveContains("failed")
-      || model.overnightGuardExportStatus.localizedCaseInsensitiveContains("issue")
-      || model.overnightGuardExportStatus.localizedCaseInsensitiveContains("missing") {
+    if overnightGuard.exportStatus.localizedCaseInsensitiveContains("failed")
+      || overnightGuard.exportStatus.localizedCaseInsensitiveContains("issue")
+      || overnightGuard.exportStatus.localizedCaseInsensitiveContains("missing") {
       return .stale
     }
-    return model.overnightGuardExportURL == nil ? .pending : .ready
+    return overnightGuard.exportURL == nil ? .pending : .ready
   }
 
   private func icon(for level: GooseLogLevel) -> String {

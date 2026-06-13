@@ -4,67 +4,152 @@ import OSLog
 
 
 final class GooseBLEClient: NSObject, ObservableObject {
-  @Published var bluetoothState = "not requested"
-  @Published var connectionState = "disconnected"
-  @Published var isScanning = false
-  @Published var discoveredDevices: [GooseDiscoveredDevice] = []
-  @Published var liveHeartRateBPM: Int?
-  @Published var liveHeartRateSource = "waiting"
-  @Published var liveHeartRateUpdatedAt: Date?
-  @Published var restingHeartRateEstimateBPM: Double?
-  @Published var restingHeartRateEstimateSampleCount = 0
-  @Published var restingHeartRateEstimateSource = "waiting"
-  @Published var restingHeartRateEstimateUpdatedAt: Date?
-  @Published var liveHRVRMSSD: Double?
-  @Published var liveHRVRRIntervalCount = 0
-  @Published var liveHRVSource = "waiting"
-  @Published var liveHRVUpdatedAt: Date?
-  @Published var liveHRVRMSSDSampleCount = 0
-  @Published var reconnectState = "idle"
-  @Published var rememberedDeviceDescription = "none"
-  @Published var activeDeviceName = "WHOOP"
+  @Published var bluetoothState = "not requested" {
+    didSet { syncConnectionStatusStore() }
+  }
+  @Published var connectionState = "disconnected" {
+    didSet {
+      syncConnectionStatusStore()
+      syncDeviceStatusStore()
+      syncHistoricalSyncStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
+  @Published var isScanning = false {
+    didSet {
+      syncConnectionStatusStore()
+      syncDeviceStatusStore()
+    }
+  }
+  @Published var discoveredDevices: [GooseDiscoveredDevice] = [] {
+    didSet { syncConnectionStatusStore() }
+  }
+  var liveHeartRateBPM: Int?
+  var liveHeartRateSource = "waiting"
+  var liveHeartRateUpdatedAt: Date?
+  var restingHeartRateEstimateBPM: Double?
+  var restingHeartRateEstimateSampleCount = 0
+  var restingHeartRateEstimateSource = "waiting"
+  var restingHeartRateEstimateUpdatedAt: Date?
+  var liveHRVRMSSD: Double?
+  var liveHRVRRIntervalCount = 0
+  var liveHRVSource = "waiting"
+  var liveHRVUpdatedAt: Date?
+  var liveHRVRMSSDSampleCount = 0
+  @Published var reconnectState = "idle" {
+    didSet { syncConnectionStatusStore() }
+  }
+  @Published var rememberedDeviceDescription = "none" {
+    didSet { syncConnectionStatusStore() }
+  }
+  @Published var activeDeviceName = "WHOOP" {
+    didSet {
+      syncDeviceStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
   @Published var activeDeviceIdentifier: UUID?
-  @Published var selectedDeviceID: UUID?
+  @Published var selectedDeviceID: UUID? {
+    didSet { syncConnectionStatusStore() }
+  }
   @Published var connectedAt: Date?
-  @Published var lastSyncAt: Date?
-  @Published var batteryLevelPercent: Int?
-  @Published var batteryUpdatedAt: Date?
-  @Published var batteryIsCharging: Bool?
-  @Published var batteryPowerStatus = "Unknown"
-  @Published var firmwareVersion: String?
-  @Published var modelNumber: String?
-  @Published var hardwareRevision: String?
-  @Published var softwareRevision: String?
+  @Published var lastSyncAt: Date? {
+    didSet { syncDeviceStatusStore() }
+  }
+  @Published var batteryLevelPercent: Int? {
+    didSet { syncDeviceStatusStore() }
+  }
+  @Published var batteryUpdatedAt: Date? {
+    didSet { syncDeviceStatusStore() }
+  }
+  @Published var batteryIsCharging: Bool? {
+    didSet {
+      syncDeviceStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
+  @Published var batteryPowerStatus = "Unknown" {
+    didSet { syncDeviceStatusStore() }
+  }
+  @Published var firmwareVersion: String? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var modelNumber: String? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var hardwareRevision: String? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var softwareRevision: String? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
   @Published var manufacturerName: String?
-  @Published var isHistoricalSyncing = false
-  @Published var historicalSyncStatus = "idle"
-  @Published var historicalPacketCount = 0
-  @Published var lastHistoricalSyncCompletedAt: Date?
-  @Published var lastHistoricalRangeCommandStatus = "No GET_DATA_RANGE response"
-  @Published var alarmCommandStatus = "No alarm command sent"
-  @Published var lastAlarmCommandFrameHex = ""
-  @Published var lastAlarmResponseSummary = "No alarm response yet"
-  @Published var lastAlarmResponsePayloadHex = ""
-  @Published var lastAlarmEventSummary = "No alarm event yet"
-  @Published var lastAlarmEventPayloadHex = ""
-  @Published var lastAlarmScheduledAt: Date?
+  @Published var isHistoricalSyncing = false {
+    didSet {
+      syncConnectionStatusStore()
+      syncHistoricalSyncStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
+  @Published var historicalSyncStatus = "idle" {
+    didSet { syncHistoricalSyncStatusStore() }
+  }
+  @Published var historicalPacketCount = 0 {
+    didSet { syncHistoricalSyncStatusStore() }
+  }
+  @Published var lastHistoricalSyncCompletedAt: Date? {
+    didSet { syncHistoricalSyncStatusStore() }
+  }
+  @Published var lastHistoricalRangeCommandStatus = "No GET_DATA_RANGE response" {
+    didSet { syncHistoricalSyncStatusStore() }
+  }
+  @Published var alarmCommandStatus = "No alarm command sent" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var lastAlarmCommandFrameHex = "" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var lastAlarmResponseSummary = "No alarm response yet" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var lastAlarmResponsePayloadHex = "" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var lastAlarmEventSummary = "No alarm event yet" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var lastAlarmEventPayloadHex = "" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var lastAlarmScheduledAt: Date? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
   @Published var lastAlarmID: Int?
   @Published var physiologyCaptureStatus = "Not started"
   @Published var lastPhysiologyCommandSummary = "No physiology stream command sent"
-  @Published var highFrequencyHistorySyncStatus = "Off"
-  @Published var highFrequencyHistorySyncActive = false
-  @Published var highFrequencyHistorySyncExpiresAt: Date?
+  @Published var highFrequencyHistorySyncStatus = "Off" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var highFrequencyHistorySyncActive = false {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var highFrequencyHistorySyncExpiresAt: Date? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
   @Published var lastHighFrequencyHistorySyncResponse = "No high-frequency sync response yet"
   @Published var lastHighFrequencyHistorySyncEvent = "No high-frequency sync event yet"
   @Published var strapClockDate: Date?
-  @Published var strapClockOffsetSeconds: TimeInterval?
-  @Published var strapClockUpdatedAt: Date?
-  @Published var strapClockStatus = "Not read"
+  @Published var strapClockOffsetSeconds: TimeInterval? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var strapClockUpdatedAt: Date? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
+  @Published var strapClockStatus = "Not read" {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
   @Published var lastClockCommandFrameHex = ""
   @Published var lastClockResponsePayloadHex = ""
-  @Published var syncToast: GooseSyncToast?
-  @Published var lastSyncFailure: GooseSyncFailure?
-  @Published var syncFailureSheet: GooseSyncFailure?
   @Published var debugCommandStatus = "No debug command sent"
   @Published var debugCommandResponses: [GooseDebugCommandResponse] = []
   @Published var debugCommandSnapshotPath = "No debug command snapshot"
@@ -85,6 +170,12 @@ final class GooseBLEClient: NSObject, ObservableObject {
   let realtimeVitalsQueue = DispatchQueue(label: "com.goose.swift.realtime-vitals", qos: .userInitiated)
   let diagnosticLogQueue = DispatchQueue(label: "com.goose.swift.diagnostic-log", qos: .utility)
   let bleUIStateAggregator = BLEUIStateAggregator(publishInterval: GooseBLEClient.bleUIStatePublishInterval)
+  let connectionStatus = GooseConnectionStatusStore()
+  let deviceStatus = GooseDeviceStatusStore()
+  let deviceAdvancedStatus = GooseDeviceAdvancedStatusStore()
+  let historicalSyncStatusStore = GooseHistoricalSyncStatusStore()
+  let liveVitals = GooseLiveVitalsStore()
+  let syncStatus = GooseSyncStatusStore()
   let messageStore = GooseMessageStore(
     maximumMessages: GooseBLEClient.maximumDisplayedMessages,
     flushInterval: GooseBLEClient.displayedMessageFlushInterval
@@ -225,17 +316,46 @@ final class GooseBLEClient: NSObject, ObservableObject {
   var central: CBCentralManager?
   var peripherals: [UUID: CBPeripheral] = [:]
   var whoopCandidateIDs = Set<UUID>()
-  var activePeripheral: CBPeripheral?
+  var activePeripheral: CBPeripheral? {
+    didSet {
+      syncConnectionStatusStore()
+      syncHistoricalSyncStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
   var messages: [GooseMessage] {
     messageStore.messages
   }
-  var commandCharacteristic: CBCharacteristic?
+  var syncToast: GooseSyncToast? {
+    get { syncStatus.syncToast }
+    set { syncStatus.syncToast = newValue }
+  }
+  var lastSyncFailure: GooseSyncFailure? {
+    get { syncStatus.lastSyncFailure }
+    set { syncStatus.lastSyncFailure = newValue }
+  }
+  var syncFailureSheet: GooseSyncFailure? {
+    get { syncStatus.syncFailureSheet }
+    set { syncStatus.syncFailureSheet = newValue }
+  }
+  var commandCharacteristic: CBCharacteristic? {
+    didSet {
+      syncConnectionStatusStore()
+      syncHistoricalSyncStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
   var debugMenuCharacteristic: CBCharacteristic?
   var batteryLevelCharacteristic: CBCharacteristic?
   var batteryLevelStatusCharacteristic: CBCharacteristic?
   var lastBatteryLevelSample: (percent: Int, capturedAt: Date)?
   var inferredBatteryChargingUntil: Date?
-  var rememberedDeviceID: UUID?
+  var rememberedDeviceID: UUID? {
+    didSet {
+      syncConnectionStatusStore()
+      syncDeviceAdvancedStatusStore()
+    }
+  }
   var rememberedDeviceName: String?
   var rememberedDeviceValidated = false
   var autoReconnectTargetID: UUID?
@@ -285,6 +405,9 @@ final class GooseBLEClient: NSObject, ObservableObject {
   var historyStartReceived = false
   var historicalDataResultAckEnabled = true
   var lastHistoricalPacketCountPublishedAt = Date.distantPast
+  var lastHistoricalPacketLogAt = Date.distantPast
+  var coalescedHistoricalPacketLogCount = 0
+  var lastLiveSyncAtPublishedAt = Date.distantPast
   var lastHistoricalSyncProgressCallbackAt = Date.distantPast
   var lastHistoricalSyncProgressCallbackStatus = ""
   var lastHistoricalSyncProgressCallbackDetail = ""
@@ -300,10 +423,14 @@ final class GooseBLEClient: NSObject, ObservableObject {
   var autoStartedPhysiologyCapture = false
   var autoConnectForPhysiologyCapture = false
   var nextSensorCommandSequence: UInt8 = 180
-  var pendingAlarmCommand: PendingAlarmCommand?
+  var pendingAlarmCommand: PendingAlarmCommand? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
   var alarmCommandTimeoutWorkItem: DispatchWorkItem?
   var nextAlarmCommandSequence: UInt8 = 64
-  var pendingClockCommand: PendingClockCommand?
+  var pendingClockCommand: PendingClockCommand? {
+    didSet { syncDeviceAdvancedStatusStore() }
+  }
   var clockCommandTimeoutWorkItem: DispatchWorkItem?
   var nextClockCommandSequence: UInt8 = 96
   var pendingDebugCommands: [UInt8: PendingDebugCommand] = [:]
@@ -347,7 +474,10 @@ final class GooseBLEClient: NSObject, ObservableObject {
   static let hrvChunkMaxAge: TimeInterval = 60
   static let hrvRMSSDAverageWindowSize = 12
   static let hrvEstimatePublishInterval: TimeInterval = 60
+  static let liveLastSyncAtPublishInterval: TimeInterval = 10
   static let historicalPacketCountPublishInterval: TimeInterval = 1
+  static let historicalPacketLogInterval: TimeInterval = 10
+  static let historicalPacketInitialLogCount = 3
   static let historicalProgressCallbackInterval: TimeInterval = 1
   static let strapClockAutoSyncThresholdSeconds: TimeInterval = 5
   static let diagnosticLogFormatter: ISO8601DateFormatter = {
@@ -967,6 +1097,7 @@ final class GooseBLEClient: NSObject, ObservableObject {
       }
     }
     writeDebugCommandSnapshot()
+    syncDeviceAdvancedStatusStore()
   }
 
 }

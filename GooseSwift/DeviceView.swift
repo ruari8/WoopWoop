@@ -2,11 +2,30 @@ import SwiftUI
 import UIKit
 
 struct DeviceView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
+  let ble: GooseBLEClient
+  let packetMonitor: PacketMonitorModel
+  let healthCapture: GooseHealthCaptureStatusStore
+
+  init(model: GooseAppModel) {
+    self.model = model
+    self.ble = model.ble
+    self.packetMonitor = model.packetMonitor
+    self.healthCapture = model.healthCaptureStatus
+  }
 
   var body: some View {
-    DeviceContentView(ble: model.ble)
-      .environmentObject(model)
+    DeviceContentView(
+      model: model,
+      packetMonitor: packetMonitor,
+      healthCapture: healthCapture,
+      ble: ble,
+      connectionStatus: ble.connectionStatus,
+      deviceStatus: ble.deviceStatus,
+      deviceAdvancedStatus: ble.deviceAdvancedStatus,
+      historicalSync: ble.historicalSyncStatusStore,
+      liveVitals: ble.liveVitals
+    )
   }
 }
 
@@ -16,9 +35,15 @@ private enum DevicePanel {
 }
 
 private struct DeviceContentView: View {
-  @EnvironmentObject private var model: GooseAppModel
-  @EnvironmentObject private var packetMonitor: PacketMonitorModel
-  @ObservedObject var ble: GooseBLEClient
+  let model: GooseAppModel
+  let packetMonitor: PacketMonitorModel
+  @ObservedObject var healthCapture: GooseHealthCaptureStatusStore
+  let ble: GooseBLEClient
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var deviceStatus: GooseDeviceStatusStore
+  @ObservedObject var deviceAdvancedStatus: GooseDeviceAdvancedStatusStore
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @State private var selectedPanel: DevicePanel = .status
 
   var body: some View {
@@ -29,7 +54,7 @@ private struct DeviceContentView: View {
           DeviceConnectionHeader(
             connected: deviceConnected,
             statusText: connectionHeadline,
-            deviceName: ble.activeDeviceName,
+            deviceName: deviceStatus.activeDeviceName,
             lastSync: lastSyncSummary
           )
           .padding(.bottom, 30)
@@ -39,11 +64,21 @@ private struct DeviceContentView: View {
 
           if selectedPanel == .status {
             DeviceImageAndBattery(
-              batteryPercent: ble.batteryLevelPercent,
-              isCharging: ble.batteryIsCharging == true
+              batteryPercent: deviceStatus.batteryLevelPercent,
+              isCharging: deviceStatus.batteryIsCharging == true
             )
           } else {
-            DeviceAdvancedPanel(model: model, packetMonitor: packetMonitor, ble: ble)
+            DeviceAdvancedPanel(
+              model: model,
+              packetMonitor: packetMonitor,
+              healthCapture: healthCapture,
+              ble: ble,
+              connectionStatus: connectionStatus,
+              deviceStatus: deviceStatus,
+              deviceAdvancedStatus: deviceAdvancedStatus,
+              historicalSync: historicalSync,
+              liveVitals: liveVitals
+            )
           }
         }
         .padding(.horizontal, 22)
@@ -80,26 +115,26 @@ private struct DeviceContentView: View {
   }
 
   private var deviceConnected: Bool {
-    let state = ble.connectionState.lowercased()
+    let state = deviceStatus.connectionState.lowercased()
     return state == "ready" || state == "connected" || state == "discovering"
   }
 
   private var connectionHeadline: String {
-    let state = ble.connectionState.lowercased()
+    let state = deviceStatus.connectionState.lowercased()
     if deviceConnected {
       return "CONNECTED"
     }
     if state == "connecting" {
       return "CONNECTING"
     }
-    if ble.isScanning {
+    if deviceStatus.isScanning {
       return "SCANNING"
     }
     return "NOT CONNECTED"
   }
 
   private var lastSyncSummary: String {
-    relativeSummary(for: ble.lastSyncAt) ?? "Not synced"
+    relativeSummary(for: deviceStatus.lastSyncAt) ?? "Not synced"
   }
 }
 
@@ -295,17 +330,23 @@ private struct BatteryRail: View {
 
 private struct DeviceAdvancedPanel: View {
   @EnvironmentObject private var messageStore: GooseMessageStore
-  @ObservedObject var model: GooseAppModel
+  let model: GooseAppModel
   @ObservedObject var packetMonitor: PacketMonitorModel
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var healthCapture: GooseHealthCaptureStatusStore
+  let ble: GooseBLEClient
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var deviceStatus: GooseDeviceStatusStore
+  @ObservedObject var deviceAdvancedStatus: GooseDeviceAdvancedStatusStore
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
 
   var body: some View {
     VStack(alignment: .leading, spacing: 22) {
       DeviceDetailStack {
         DeviceFactRow(systemName: "gearshape", label: "Firmware", value: firmwareSummary)
         DeviceFactRow(systemName: "battery.25percent", label: "Battery", value: batterySummary)
-        DeviceFactRow(systemName: ble.batteryIsCharging == true ? "bolt.fill" : "powerplug", label: "Charging", value: ble.batteryChargeDisplayStatus)
-        DeviceFactRow(systemName: "arrow.2.circlepath", label: "Last sync", value: relativeSummary(for: ble.lastSyncAt) ?? "Not synced")
+        DeviceFactRow(systemName: deviceStatus.batteryIsCharging == true ? "bolt.fill" : "powerplug", label: "Charging", value: deviceAdvancedStatus.batteryChargeDisplayStatus)
+        DeviceFactRow(systemName: "arrow.2.circlepath", label: "Last sync", value: relativeSummary(for: deviceStatus.lastSyncAt) ?? "Not synced")
         DeviceFactRow(systemName: "clock.arrow.circlepath", label: "Strap clock", value: clockSummary)
       }
 
@@ -313,34 +354,41 @@ private struct DeviceAdvancedPanel: View {
 
       DeviceDetailStack {
         DeviceFactRow(systemName: "heart", label: "Live HR", value: heartRateSummary)
-        DeviceFactRow(systemName: "dot.radiowaves.left.and.right", label: "Connection", value: ble.connectionState.capitalized)
-        DeviceFactRow(systemName: "arrow.triangle.2.circlepath", label: "Historical sync", value: ble.historicalSyncStatus.capitalized)
-        DeviceFactRow(systemName: "bolt.horizontal", label: "High freq", value: ble.highFrequencyHistorySyncDisplaySummary)
-        DeviceFactRow(systemName: "lungs", label: "RR packets", value: model.respiratoryPacketWatchStatus)
+        DeviceFactRow(systemName: "dot.radiowaves.left.and.right", label: "Connection", value: connectionStatus.connectionState.capitalized)
+        DeviceFactRow(systemName: "arrow.triangle.2.circlepath", label: "Historical sync", value: historicalSync.status.capitalized)
+        DeviceFactRow(systemName: "bolt.horizontal", label: "High freq", value: deviceAdvancedStatus.highFrequencyHistorySyncDisplaySummary)
+        DeviceFactRow(systemName: "lungs", label: "RR packets", value: healthCapture.respiratoryPacketWatchStatus)
         DeviceFactRow(systemName: "cpu", label: "Rust", value: model.rustStatus)
         DeviceFactRow(systemName: "waveform.path.ecg", label: "Last frame", value: packetMonitor.lastParsedFrameSummary)
       }
 
-      DeviceActionGrid(model: model, ble: ble)
-      DiscoveredDeviceList(ble: ble)
+      DeviceActionGrid(
+        model: model,
+        healthCapture: healthCapture,
+        ble: ble,
+        connectionStatus: connectionStatus,
+        historicalSync: historicalSync,
+        deviceAdvancedStatus: deviceAdvancedStatus
+      )
+      DiscoveredDeviceList(ble: ble, connectionStatus: connectionStatus)
       EventLogPreview(messages: Array(messageStore.messages.prefix(5)))
     }
     .onAppear(perform: refreshClockIfPossible)
-    .onChange(of: ble.connectionState) { _, _ in
+    .onChange(of: connectionStatus.connectionState) { _, _ in
       refreshClockIfPossible()
     }
   }
 
   private var firmwareSummary: String {
-    ble.firmwareVersion ?? ble.softwareRevision ?? "Unknown"
+    deviceAdvancedStatus.firmwareSummary
   }
 
   private var batterySummary: String {
-    guard let battery = ble.batteryLevelPercent else {
+    guard let battery = deviceStatus.batteryLevelPercent else {
       return "Unknown"
     }
-    let status = ble.batteryPowerStatus == "Unknown" ? "" : " | \(ble.batteryPowerStatus)"
-    if let updatedAt = ble.batteryUpdatedAt,
+    let status = deviceStatus.batteryPowerStatus == "Unknown" ? "" : " | \(deviceStatus.batteryPowerStatus)"
+    if let updatedAt = deviceStatus.batteryUpdatedAt,
        Date().timeIntervalSince(updatedAt) > 3600,
        let relative = relativeSummary(for: updatedAt) {
       return "\(battery)%\(status) [\(relative)]"
@@ -349,20 +397,14 @@ private struct DeviceAdvancedPanel: View {
   }
 
   private var modelSummary: String {
-    if let modelNumber = ble.modelNumber {
-      return modelNumber
-    }
-    if let hardwareRevision = ble.hardwareRevision {
-      return "Hardware \(hardwareRevision)"
-    }
-    return ble.activeDeviceName
+    deviceAdvancedStatus.modelSummary
   }
 
   private var heartRateSummary: String {
-    guard let bpm = ble.liveHeartRateBPM else {
-      return ble.liveHeartRateSource.capitalized
+    guard let bpm = liveVitals.liveHeartRateBPM else {
+      return liveVitals.liveHeartRateSource.capitalized
     }
-    if let updatedAt = ble.liveHeartRateUpdatedAt,
+    if let updatedAt = liveVitals.liveHeartRateUpdatedAt,
        let relative = relativeSummary(for: updatedAt) {
       return "\(bpm) bpm \(relative)"
     }
@@ -370,19 +412,19 @@ private struct DeviceAdvancedPanel: View {
   }
 
   private var clockSummary: String {
-    guard let offset = ble.strapClockOffsetSeconds else {
-      return ble.strapClockStatus
+    guard let offset = deviceAdvancedStatus.strapClockOffsetSeconds else {
+      return deviceAdvancedStatus.strapClockStatus
     }
     let drift = formattedClockOffset(offset)
-    if let updatedAt = ble.strapClockUpdatedAt,
+    if let updatedAt = deviceAdvancedStatus.strapClockUpdatedAt,
        let relative = relativeSummary(for: updatedAt) {
-      return "\(drift) | \(ble.strapClockStatus) | \(relative)"
+      return "\(drift) | \(deviceAdvancedStatus.strapClockStatus) | \(relative)"
     }
-    return "\(drift) | \(ble.strapClockStatus)"
+    return "\(drift) | \(deviceAdvancedStatus.strapClockStatus)"
   }
 
   private func refreshClockIfPossible() {
-    guard ble.canSyncClock else {
+    guard deviceAdvancedStatus.canSyncClock else {
       return
     }
     ble.readStrapClock(syncIfNeeded: true)
@@ -445,8 +487,12 @@ private struct DeviceFactRow: View {
 }
 
 private struct DeviceActionGrid: View {
-  @ObservedObject var model: GooseAppModel
-  @ObservedObject var ble: GooseBLEClient
+  let model: GooseAppModel
+  @ObservedObject var healthCapture: GooseHealthCaptureStatusStore
+  let ble: GooseBLEClient
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
+  @ObservedObject var deviceAdvancedStatus: GooseDeviceAdvancedStatusStore
 
   private let columns = [
     GridItem(.flexible(), spacing: 10),
@@ -458,58 +504,58 @@ private struct DeviceActionGrid: View {
       DeviceActionButton(title: "Bluetooth", systemName: "antenna.radiowaves.left.and.right") {
         ble.requestBluetooth()
       }
-      DeviceActionButton(title: ble.isScanning ? "Stop Scan" : "Scan", systemName: "dot.radiowaves.left.and.right") {
-        ble.isScanning ? ble.stopScan() : ble.startScan()
+      DeviceActionButton(title: connectionStatus.isScanning ? "Stop Scan" : "Scan", systemName: "dot.radiowaves.left.and.right") {
+        connectionStatus.isScanning ? ble.stopScan() : ble.startScan()
       }
-      .disabled(!ble.canScan)
+      .disabled(!connectionStatus.canScan)
 
       DeviceActionButton(title: "Connect", systemName: "link") {
         ble.connectSelected()
       }
-      .disabled(!ble.canConnect)
+      .disabled(!connectionStatus.canConnect)
 
       DeviceActionButton(title: "Reconnect", systemName: "arrow.clockwise") {
         ble.reconnectRemembered()
       }
-      .disabled(!ble.canReconnectRemembered)
+      .disabled(!connectionStatus.canReconnectRemembered)
 
-      DeviceActionButton(title: ble.isHistoricalSyncing ? "Syncing" : "Sync", systemName: "arrow.triangle.2.circlepath") {
+      DeviceActionButton(title: historicalSync.isSyncing ? "Syncing" : "Sync", systemName: "arrow.triangle.2.circlepath") {
         ble.syncHistoricalPackets()
       }
-      .disabled(!ble.canSyncHistorical)
+      .disabled(!historicalSync.canSyncHistorical)
 
-      DeviceActionButton(title: ble.highFrequencyHistorySyncActive ? "Exit HF" : "High Freq", systemName: "bolt.horizontal") {
-        if ble.highFrequencyHistorySyncActive {
+      DeviceActionButton(title: deviceAdvancedStatus.highFrequencyHistorySyncActive ? "Exit HF" : "High Freq", systemName: "bolt.horizontal") {
+        if deviceAdvancedStatus.highFrequencyHistorySyncActive {
           ble.exitHighFrequencyHistorySync()
         } else {
           ble.enterHighFrequencyHistorySync()
         }
       }
-      .disabled(!ble.canWriteHighFrequencyHistorySync)
+      .disabled(!deviceAdvancedStatus.canWriteHighFrequencyHistorySync)
 
-      DeviceActionButton(title: model.respiratoryPacketWatchActive ? "Stop RR" : "Watch RR", systemName: "lungs") {
-        if model.respiratoryPacketWatchActive {
+      DeviceActionButton(title: healthCapture.respiratoryPacketWatchActive ? "Stop RR" : "Watch RR", systemName: "lungs") {
+        if healthCapture.respiratoryPacketWatchActive {
           model.stopRespiratoryPacketWatch()
         } else {
           model.startRespiratoryPacketWatch()
         }
       }
-      .disabled(!model.respiratoryPacketWatchActive && ble.connectionState != "ready")
+      .disabled(!healthCapture.respiratoryPacketWatchActive && connectionStatus.connectionState != "ready")
 
       DeviceActionButton(title: "Hello", systemName: "paperplane") {
         ble.sendClientHello()
       }
-      .disabled(!ble.canSendHello)
+      .disabled(!connectionStatus.canSendHello)
 
       DeviceActionButton(title: "Clock", systemName: "clock.arrow.circlepath") {
         ble.readStrapClock(syncIfNeeded: true)
       }
-      .disabled(!ble.canSyncClock)
+      .disabled(!deviceAdvancedStatus.canSyncClock)
 
       DeviceActionButton(title: "Forget", systemName: "trash", role: .destructive) {
         ble.forgetRememberedDevice()
       }
-      .disabled(!ble.hasRememberedDevice)
+      .disabled(!connectionStatus.hasRememberedDevice)
     }
   }
 }
@@ -547,21 +593,22 @@ private struct DeviceActionButton: View {
 }
 
 private struct DiscoveredDeviceList: View {
-  @ObservedObject var ble: GooseBLEClient
+  let ble: GooseBLEClient
+  @ObservedObject var connectionStatus: GooseConnectionStatusStore
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("DISCOVERED")
         .font(deviceLabelFont)
         .foregroundStyle(secondaryText)
-      if ble.discoveredDevices.isEmpty {
+      if connectionStatus.discoveredDevices.isEmpty {
         Text("No devices yet")
           .font(deviceBodyFont)
           .foregroundStyle(mutedText)
           .frame(maxWidth: .infinity, alignment: .leading)
       } else {
         VStack(spacing: 0) {
-          ForEach(ble.discoveredDevices) { device in
+          ForEach(connectionStatus.discoveredDevices) { device in
             Button {
               ble.select(device)
             } label: {

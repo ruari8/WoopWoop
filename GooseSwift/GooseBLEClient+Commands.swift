@@ -78,6 +78,7 @@ extension GooseBLEClient {
     @unknown default:
       bluetoothState = "unknown"
     }
+    syncConnectionStatusStore()
     if previous != bluetoothState {
       record(source: "ble", title: "bluetooth.state", body: bluetoothState)
     }
@@ -100,6 +101,7 @@ extension GooseBLEClient {
   func updateConnectionState(_ value: String) {
     let previous = connectionState
     connectionState = value
+    syncConnectionStatusStore()
     updateNotificationContext(connectionState: value)
     if previous != value {
       record(source: "ble", title: "connection.state", body: value)
@@ -527,6 +529,7 @@ extension GooseBLEClient {
     liveHRVRMSSDSampleCount = sampleCount
     liveHRVUpdatedAt = defaults.object(forKey: DefaultsKey.liveHRVUpdatedAt) as? Date
     liveHRVSource = source
+    syncLiveVitalsStore()
     lastPublishedHRVRMSSD = rmssd
     lastHRVPublishedAt = liveHRVUpdatedAt ?? Date.distantPast
   }
@@ -544,6 +547,7 @@ extension GooseBLEClient {
     restingHeartRateEstimateSampleCount = count
     restingHeartRateEstimateUpdatedAt = defaults.object(forKey: DefaultsKey.restingHeartRateEstimateUpdatedAt) as? Date
     restingHeartRateEstimateSource = defaults.string(forKey: DefaultsKey.restingHeartRateEstimateSource) ?? "ble.hr.standard.low_quartile"
+    syncLiveVitalsStore()
     lastRestingHeartRateEstimateBPM = bpm
     lastRestingHeartRateEstimatePublishedAt = restingHeartRateEstimateUpdatedAt ?? Date.distantPast
   }

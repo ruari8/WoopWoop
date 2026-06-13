@@ -121,6 +121,7 @@ extension GooseBLEClient {
     ensureCentral()
     guard let central, central.state == .poweredOn else {
       bluetoothState = "bluetooth unavailable"
+      syncConnectionStatusStore()
       record(level: .warn, source: "ble", title: "scan.start.blocked", body: bluetoothState)
       return
     }

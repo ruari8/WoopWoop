@@ -221,7 +221,8 @@ struct SleepV2CalculationRow: View {
 }
 
 struct SleepV2AlarmSheet: View {
-  @ObservedObject var ble: GooseBLEClient
+  let ble: GooseBLEClient
+  @ObservedObject var alarmStatus: GooseDeviceAdvancedStatusStore
   @Environment(\.dismiss) private var dismiss
   @Environment(\.colorScheme) private var colorScheme
   @State private var alarmTime = Self.defaultWakeTime()
@@ -272,8 +273,8 @@ struct SleepV2AlarmSheet: View {
             .background(Capsule().fill(palette.accent))
         }
         .buttonStyle(.plain)
-        .disabled(!ble.canWriteAlarm)
-        .opacity(ble.canWriteAlarm ? 1 : 0.52)
+        .disabled(!alarmStatus.canWriteAlarm)
+        .opacity(alarmStatus.canWriteAlarm ? 1 : 0.52)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
@@ -325,7 +326,7 @@ struct SleepV2AlarmSheet: View {
           Text("Alarm config")
             .font(.title3.weight(.semibold))
             .foregroundStyle(palette.text)
-          Text(ble.canWriteAlarm ? "Ready to write to band" : "Connect a band to write alarms")
+          Text(alarmStatus.canWriteAlarm ? "Ready to write to band" : "Connect a band to write alarms")
             .font(.caption.weight(.medium))
             .foregroundStyle(palette.secondaryText)
         }
@@ -474,7 +475,7 @@ struct SleepV2AlarmSheet: View {
         ) {
           pendingConfirmation = .run(alarmID)
         }
-        .disabled(!ble.canWriteAlarm)
+        .disabled(!alarmStatus.canWriteAlarm)
 
         SleepV2AlarmControlButton(
           palette: palette,
@@ -485,12 +486,12 @@ struct SleepV2AlarmSheet: View {
         ) {
           pendingConfirmation = .disable
         }
-        .disabled(!ble.canWriteAlarm)
+        .disabled(!alarmStatus.canWriteAlarm)
       }
-      .opacity(ble.canWriteAlarm ? 1 : 0.52)
+      .opacity(alarmStatus.canWriteAlarm ? 1 : 0.52)
 
       DisclosureGroup(isExpanded: $showingDiagnostics) {
-        SleepV2AlarmDiagnostics(ble: ble, palette: palette)
+        SleepV2AlarmDiagnostics(alarmStatus: alarmStatus, palette: palette)
           .padding(.top, 10)
       } label: {
         Label("Band write diagnostics", systemImage: "stethoscope")
@@ -757,7 +758,7 @@ struct SleepV2AlarmTileBackground: View {
 }
 
 struct SleepV2AlarmDiagnostics: View {
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var alarmStatus: GooseDeviceAdvancedStatusStore
   let palette: SleepV2Palette
 
   var body: some View {
@@ -765,17 +766,17 @@ struct SleepV2AlarmDiagnostics: View {
       Text("Diagnostics")
         .font(.system(size: 14, weight: .heavy))
         .foregroundStyle(palette.secondaryText)
-      SleepV2AlarmDiagnosticRow(label: "Write support", value: ble.alarmWriteSupportSummary, palette: palette)
-      SleepV2AlarmDiagnosticRow(label: "Last response", value: ble.lastAlarmResponseSummary, palette: palette)
-      SleepV2AlarmDiagnosticRow(label: "Last event", value: ble.lastAlarmEventSummary, palette: palette)
-      if !ble.lastAlarmCommandFrameHex.isEmpty {
-        SleepV2AlarmDiagnosticRow(label: "Last frame", value: String(ble.lastAlarmCommandFrameHex.prefix(38)), palette: palette)
+      SleepV2AlarmDiagnosticRow(label: "Write support", value: alarmStatus.alarmWriteSupportSummary, palette: palette)
+      SleepV2AlarmDiagnosticRow(label: "Last response", value: alarmStatus.lastAlarmResponseSummary, palette: palette)
+      SleepV2AlarmDiagnosticRow(label: "Last event", value: alarmStatus.lastAlarmEventSummary, palette: palette)
+      if !alarmStatus.lastAlarmCommandFrameHex.isEmpty {
+        SleepV2AlarmDiagnosticRow(label: "Last frame", value: String(alarmStatus.lastAlarmCommandFrameHex.prefix(38)), palette: palette)
       }
-      if !ble.lastAlarmResponsePayloadHex.isEmpty {
-        SleepV2AlarmDiagnosticRow(label: "Response hex", value: String(ble.lastAlarmResponsePayloadHex.prefix(38)), palette: palette)
+      if !alarmStatus.lastAlarmResponsePayloadHex.isEmpty {
+        SleepV2AlarmDiagnosticRow(label: "Response hex", value: String(alarmStatus.lastAlarmResponsePayloadHex.prefix(38)), palette: palette)
       }
-      if !ble.lastAlarmEventPayloadHex.isEmpty {
-        SleepV2AlarmDiagnosticRow(label: "Event hex", value: String(ble.lastAlarmEventPayloadHex.prefix(38)), palette: palette)
+      if !alarmStatus.lastAlarmEventPayloadHex.isEmpty {
+        SleepV2AlarmDiagnosticRow(label: "Event hex", value: String(alarmStatus.lastAlarmEventPayloadHex.prefix(38)), palette: palette)
       }
     }
     .padding(14)

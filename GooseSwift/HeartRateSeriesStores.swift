@@ -57,14 +57,14 @@ struct HeartRateSeriesFile: Codable {
   let samples: [HeartRateSamplePoint]
 }
 
-final class HeartRateSeriesStore {
+final class HeartRateSeriesStore: @unchecked Sendable {
   static let shared = HeartRateSeriesStore()
   static let didUpdateNotification = Notification.Name("GooseHeartRateSeriesStoreDidUpdate")
 
   private static let retention: TimeInterval = 7 * 24 * 60 * 60
   private static let maxSamples = 100_000
-  private static let persistDelay: TimeInterval = 1.0
-  private static let updateNotificationInterval: TimeInterval = 2.0
+  private static let persistDelay: TimeInterval = 5.0
+  private static let updateNotificationInterval: TimeInterval = 10.0
 
   private let url: URL
   private let stateLock = NSLock()
@@ -126,7 +126,8 @@ final class HeartRateSeriesStore {
     let bucketCount = max(1, Int(ceil(dayEnd.timeIntervalSince(dayStart) / 3600)))
     var buckets = Array(repeating: HeartRateHourlyBucket(), count: bucketCount)
 
-    for sample in samples where sample.capturedAt >= dayStart && sample.capturedAt < dayEnd {
+    let dayRange = sampleRangeLocked(from: dayStart, to: dayEnd)
+    for sample in samples[dayRange] {
       let hourOffset = Int(sample.capturedAt.timeIntervalSince(dayStart) / 3600)
       guard buckets.indices.contains(hourOffset) else {
         continue
@@ -160,9 +161,11 @@ final class HeartRateSeriesStore {
   func samples(from start: Date, to end: Date) -> [HeartRateSamplePoint] {
     stateLock.lock()
     defer { stateLock.unlock() }
-    return samples
-      .filter { $0.capturedAt >= start && $0.capturedAt < end }
-      .sorted { $0.capturedAt < $1.capturedAt }
+    let range = sampleRangeLocked(from: start, to: end)
+    guard !range.isEmpty else {
+      return []
+    }
+    return Array(samples[range])
   }
 
   func summary(forDayContaining date: Date = Date(), calendar: Calendar = .current) -> String {
@@ -190,7 +193,7 @@ final class HeartRateSeriesStore {
     defer { stateLock.unlock() }
     let dayStart = calendar.startOfDay(for: date)
     let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(24 * 60 * 60)
-    let daySamples = samples.filter { $0.capturedAt >= dayStart && $0.capturedAt < dayEnd }
+    let daySamples = Array(samples[sampleRangeLocked(from: dayStart, to: dayEnd)])
     let candidateSamples: [HeartRateSamplePoint]
     if daySamples.count >= minimumSamples {
       candidateSamples = daySamples
@@ -250,6 +253,29 @@ final class HeartRateSeriesStore {
     }
     return (try? decoder.decode([HeartRateSamplePoint].self, from: data))?
       .sorted { $0.capturedAt < $1.capturedAt } ?? []
+  }
+
+  private func sampleRangeLocked(from start: Date, to end: Date) -> Range<Int> {
+    guard start < end, !samples.isEmpty else {
+      return 0..<0
+    }
+    let startIndex = lowerBoundIndexLocked(for: start)
+    let endIndex = lowerBoundIndexLocked(for: end)
+    return startIndex..<endIndex
+  }
+
+  private func lowerBoundIndexLocked(for date: Date) -> Int {
+    var low = samples.startIndex
+    var high = samples.endIndex
+    while low < high {
+      let mid = low + (high - low) / 2
+      if samples[mid].capturedAt < date {
+        low = mid + 1
+      } else {
+        high = mid
+      }
+    }
+    return low
   }
 
   private func prune(relativeTo date: Date) {
@@ -343,8 +369,8 @@ final class HRVSeriesStore {
 
   private static let retention: TimeInterval = 14 * 24 * 60 * 60
   private static let maxSamples = 20_000
-  private static let persistDelay: TimeInterval = 1.0
-  private static let updateNotificationInterval: TimeInterval = 2.0
+  private static let persistDelay: TimeInterval = 5.0
+  private static let updateNotificationInterval: TimeInterval = 10.0
 
   private let url: URL
   private let stateLock = NSLock()

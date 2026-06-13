@@ -19,10 +19,10 @@ enum FitnessWorkoutPage: Int, CaseIterable, Identifiable {
 
 struct LiveActivityContentView: View {
   @Environment(\.dismiss) private var dismiss
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
   @AppStorage("goose.swift.activity.lockHintSeen") private var lockHintSeen = false
   @AppStorage("goose.swift.activity.recentWorkouts") private var recentWorkoutRawValues = ""
-  @ObservedObject var ble: GooseBLEClient
+  @ObservedObject var liveVitals: GooseLiveVitalsStore
   @ObservedObject var session: ActivitySessionModel
   @ObservedObject var locationTracker: ActivityLocationTracker
 
@@ -44,7 +44,7 @@ struct LiveActivityContentView: View {
       if let countdownValue {
         FitnessCountdownView(value: countdownValue, activity: session.selectedActivity, onSkip: skipCountdown)
       } else if showingSummary {
-        FitnessSummaryView(activity: session.selectedActivity, session: session, ble: ble, locationTracker: locationTracker) {
+        FitnessSummaryView(activity: session.selectedActivity, session: session, liveVitals: liveVitals, locationTracker: locationTracker) {
           dismiss()
         }
       } else if !session.isActive {
@@ -60,7 +60,7 @@ struct LiveActivityContentView: View {
           selectedPage: $selectedPage,
           activity: session.selectedActivity,
           session: session,
-          ble: ble,
+          liveVitals: liveVitals,
           locationTracker: locationTracker,
           segmentNumber: segmentNumber,
           dockExpanded: $dockExpanded,
@@ -182,7 +182,7 @@ struct LiveActivityContentView: View {
 
     if session.isActive && session.isPaused {
       session.resume {
-        ble.liveHeartRateBPM
+        liveVitals.liveHeartRateBPM
       }
       if session.selectedActivity.usesGPS {
         locationTracker.start(reset: false)
@@ -193,7 +193,7 @@ struct LiveActivityContentView: View {
     }
 
     if session.isActive {
-      session.pause(heartRate: ble.liveHeartRateBPM)
+      session.pause(heartRate: liveVitals.liveHeartRateBPM)
       if session.selectedActivity.usesGPS {
         locationTracker.stop()
       }
@@ -235,7 +235,7 @@ struct LiveActivityContentView: View {
     segmentNumber = 1
     let startedAt = Date()
     session.start(now: startedAt) {
-      ble.liveHeartRateBPM
+      liveVitals.liveHeartRateBPM
     }
     rememberRecentActivity(session.selectedActivity)
     model.beginActivityRecording(activity: session.selectedActivity, startedAt: startedAt)
@@ -248,7 +248,7 @@ struct LiveActivityContentView: View {
     WorkoutLiveActivityController.shared.start(
       activity: session.selectedActivity,
       session: session,
-      heartRate: ble.liveHeartRateBPM,
+      heartRate: liveVitals.liveHeartRateBPM,
       distanceMeters: locationTracker.distanceMeters
     )
     model.recordUIAction("activity.start", detail: session.selectedActivity.title)
@@ -268,11 +268,11 @@ struct LiveActivityContentView: View {
     countdownValue = nil
     controlsLocked = false
     let endedAt = Date()
-    session.end(now: endedAt, heartRate: ble.liveHeartRateBPM)
+    session.end(now: endedAt, heartRate: liveVitals.liveHeartRateBPM)
     locationTracker.stop()
     WorkoutLiveActivityController.shared.end(
       session: session,
-      heartRate: ble.liveHeartRateBPM,
+      heartRate: liveVitals.liveHeartRateBPM,
       distanceMeters: locationTracker.distanceMeters
     )
     model.finishActivityRecording(
@@ -327,7 +327,7 @@ struct LiveActivityContentView: View {
   private func updateWorkoutLiveActivity(force: Bool = false) {
     WorkoutLiveActivityController.shared.update(
       session: session,
-      heartRate: ble.liveHeartRateBPM,
+      heartRate: liveVitals.liveHeartRateBPM,
       distanceMeters: locationTracker.distanceMeters,
       force: force
     )

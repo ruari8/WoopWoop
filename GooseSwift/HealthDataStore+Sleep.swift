@@ -138,7 +138,7 @@ extension HealthDataStore {
     min(max(rawScore0To21 / 21.0 * 100.0, 0), 100)
   }
 
-  static func stressStatusLabel(score: Double?) -> String {
+  nonisolated static func stressStatusLabel(score: Double?) -> String {
     guard let score else {
       return "No data"
     }

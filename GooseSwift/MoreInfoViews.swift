@@ -76,7 +76,8 @@ struct MoreSupportView: View {
 }
 
 struct MoreAboutView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
+  @ObservedObject var deviceStatus: GooseDeviceStatusStore
   @ObservedObject var store: MoreDataStore
 
   var body: some View {
@@ -88,7 +89,7 @@ struct MoreAboutView: View {
       }
 
       Section("Runtime") {
-        MoreInfoRow(title: "Model", value: model.ble.activeDeviceName, systemImage: "sensor.tag.radiowaves.forward", status: model.ble.connectionState == "ready" ? .ready : .pending)
+        MoreInfoRow(title: "Model", value: deviceStatus.activeDeviceName, systemImage: "sensor.tag.radiowaves.forward", status: deviceStatus.connectionState == "ready" ? .ready : .pending)
         MoreInfoRow(title: "Hello", value: model.helloSummary, systemImage: "hand.wave", status: model.helloSummary.hasPrefix("GET_HELLO") ? .ready : .pending)
       }
 

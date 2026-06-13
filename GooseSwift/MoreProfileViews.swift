@@ -86,7 +86,7 @@ struct MoreDeveloperView: View {
 }
 
 struct MoreProfileView: View {
-  @EnvironmentObject private var model: GooseAppModel
+  let model: GooseAppModel
   @AppStorage(OnboardingStorage.firstName) private var firstName = ""
   @AppStorage(OnboardingStorage.dateOfBirth) private var dateOfBirthString = ""
   @AppStorage(OnboardingStorage.unitSystem) private var unitSystemRaw = MoreProfileUnitSystem.imperial.rawValue

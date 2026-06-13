@@ -3,6 +3,12 @@ import UIKit
 
 
 @MainActor
+final class HomeActivityTimelineStore: ObservableObject {
+  @Published var items: [ActivityTimelineItem] = []
+  @Published var status = "Activity timeline not loaded"
+}
+
+@MainActor
 final class GooseAppModel: ObservableObject {
   @Published var onboardingComplete = false
   @Published var rustStatus = "Rust bridge not checked"
@@ -10,50 +16,125 @@ final class GooseAppModel: ObservableObject {
   @Published var packetImportRevision = 0
   @Published var packetImportStatus = "No packet import"
   @Published var activityPersistenceStatus = "No activity stored"
-  @Published var homeActivityTimelineItems: [ActivityTimelineItem] = []
-  @Published var homeActivityTimelineStatus = "Activity timeline not loaded"
-  @Published var activityDetectionStatus = "Watching for movement packets"
-  @Published var movementPacketValidationStatus = "Not run"
-  @Published var movementPacketValidationIsRunning = false
+  var activityDetectionStatus = "Watching for movement packets" {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var movementPacketValidationStatus = "Not run" {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var movementPacketValidationIsRunning = false {
+    didSet { syncHealthCaptureStatusStore() }
+  }
   @Published var heartRateHourlyRanges: [HeartRateHourlyRange] = []
   @Published var heartRateStorageStatus = "No HR samples stored"
-  @Published var healthPacketCaptureSessionID: String?
-  @Published var healthPacketCaptureStatus = "No health packet capture"
-  @Published var healthPacketCaptureStartedAt: Date?
-  @Published var healthPacketCaptureFrameCount = 0
-  @Published var healthPacketCaptureTargetSummary = "No health packet capture"
-  @Published var healthPacketCaptureLastPacketSummary = "No packets captured"
-  @Published var healthPacketCaptureFamilyRows: [HealthPacketCaptureFamily] = []
-  @Published var respiratoryPacketWatchActive = false
-  @Published var respiratoryPacketWatchStatus = "Not watching K18 respiratory history"
-  @Published var overnightGuardActive = false
-  @Published var overnightGuardStatus = "Not started"
-  @Published var overnightGuardReadinessStatus = "pending"
-  @Published var overnightGuardReadinessSummary = "Not sleep-ready | connect WHOOP and start Overnight Guard"
-  @Published var overnightGuardRawNotificationCount = 0
-  @Published var overnightGuardRangePollCount = 0
-  @Published var overnightGuardRangeTelemetryCount = 0
-  @Published var overnightGuardSuccessfulRangePollCount = 0
-  @Published var overnightGuardCommandWriteCount = 0
-  @Published var overnightGuardEventLogCount = 0
-  @Published var overnightGuardTargetSummary = OvernightGuardTargetCounts().summary
-  @Published var overnightGuardHistoricalOrderSummary = OvernightGuardHistoricalOrderEvidence().summary
-  @Published var overnightGuardLastPacketSummary = "No raw notifications"
-  @Published var overnightGuardSpoolPath = "No overnight spool"
-  @Published var overnightGuardSpoolSizeSummary = "No overnight spool size"
-  @Published var overnightGuardSQLiteMirrorSummary = "SQLite mirror not started"
-  @Published var overnightGuardPowerSummary = "Power not checked"
-  @Published var overnightGuardWatchdogSummary = "Watchdog not checked"
-  @Published var overnightGuardWarning = "Keep the official WHOOP app closed until Goose final sync/export finishes."
-  @Published var overnightGuardExportStatus = "No overnight export"
-  @Published var overnightGuardExportInProgress = false
-  @Published var overnightGuardExportURL: URL?
-  @Published var overnightGuardExportManifestURL: URL?
-  @Published var overnightGuardExportManifestError: String?
-  @Published var overnightGuardCanExportLastSession = false
+  var healthPacketCaptureSessionID: String? {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var healthPacketCaptureStatus = "No health packet capture" {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var healthPacketCaptureStartedAt: Date? {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var healthPacketCaptureFrameCount = 0 {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var healthPacketCaptureTargetSummary = "No health packet capture" {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var healthPacketCaptureLastPacketSummary = "No packets captured" {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var healthPacketCaptureFamilyRows: [HealthPacketCaptureFamily] = [] {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var respiratoryPacketWatchActive = false {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var respiratoryPacketWatchStatus = "Not watching K18 respiratory history" {
+    didSet { syncHealthCaptureStatusStore() }
+  }
+  var overnightGuardActive = false {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardStatus = "Not started" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardReadinessStatus = "pending" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardReadinessSummary = "Not sleep-ready | connect WHOOP and start Overnight Guard" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardRawNotificationCount = 0 {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardRangePollCount = 0 {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardRangeTelemetryCount = 0 {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardSuccessfulRangePollCount = 0 {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardCommandWriteCount = 0 {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardEventLogCount = 0 {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardTargetSummary = OvernightGuardTargetCounts().summary {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardHistoricalOrderSummary = OvernightGuardHistoricalOrderEvidence().summary {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardLastPacketSummary = "No raw notifications" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardSpoolPath = "No overnight spool" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardSpoolSizeSummary = "No overnight spool size" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardSQLiteMirrorSummary = "SQLite mirror not started" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardPowerSummary = "Power not checked" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardWatchdogSummary = "Watchdog not checked" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardWarning = "Keep the official WHOOP app closed until Goose final sync/export finishes." {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardExportStatus = "No overnight export" {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardExportInProgress = false {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardExportURL: URL? {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardExportManifestURL: URL? {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardExportManifestError: String? {
+    didSet { syncOvernightGuardStatusStore() }
+  }
+  var overnightGuardCanExportLastSession = false {
+    didSet { syncOvernightGuardStatusStore() }
+  }
 
   let ble: GooseBLEClient
+  let homeActivityTimeline = HomeActivityTimelineStore()
   let packetMonitor = PacketMonitorModel()
+  let healthCaptureStatus = GooseHealthCaptureStatusStore()
+  let overnightGuardStatusStore = GooseOvernightGuardStatusStore()
   let activitySession = ActivitySessionModel()
   let activityLocationTracker = ActivityLocationTracker()
   let rust = GooseRustBridge()
@@ -142,6 +223,59 @@ final class GooseAppModel: ObservableObject {
   var performancePipelineStatus: String { packetMonitor.performancePipelineStatus }
   var liveDeviceDataSummary: String { packetMonitor.liveDeviceDataSummary }
   var recentDeviceSignalPoints: [DeviceSignalPoint] { packetMonitor.recentDeviceSignalPoints }
+  func syncHealthCaptureStatusStore() {
+    healthCaptureStatus.apply(
+      activityDetectionStatus: activityDetectionStatus,
+      movementPacketValidationStatus: movementPacketValidationStatus,
+      movementPacketValidationIsRunning: movementPacketValidationIsRunning,
+      healthPacketCaptureSessionID: healthPacketCaptureSessionID,
+      healthPacketCaptureStatus: healthPacketCaptureStatus,
+      healthPacketCaptureStartedAt: healthPacketCaptureStartedAt,
+      healthPacketCaptureFrameCount: healthPacketCaptureFrameCount,
+      healthPacketCaptureTargetSummary: healthPacketCaptureTargetSummary,
+      healthPacketCaptureLastPacketSummary: healthPacketCaptureLastPacketSummary,
+      healthPacketCaptureFamilyRows: healthPacketCaptureFamilyRows,
+      respiratoryPacketWatchActive: respiratoryPacketWatchActive,
+      respiratoryPacketWatchStatus: respiratoryPacketWatchStatus
+    )
+  }
+  func syncOvernightGuardStatusStore() {
+    overnightGuardStatusStore.apply(
+      active: overnightGuardActive,
+      status: overnightGuardStatus,
+      readinessStatus: overnightGuardReadinessStatus,
+      readinessSummary: overnightGuardReadinessSummary,
+      rawNotificationCount: overnightGuardRawNotificationCount,
+      rangePollCount: overnightGuardRangePollCount,
+      rangeTelemetryCount: overnightGuardRangeTelemetryCount,
+      successfulRangePollCount: overnightGuardSuccessfulRangePollCount,
+      commandWriteCount: overnightGuardCommandWriteCount,
+      eventLogCount: overnightGuardEventLogCount,
+      targetSummary: overnightGuardTargetSummary,
+      historicalOrderSummary: overnightGuardHistoricalOrderSummary,
+      lastPacketSummary: overnightGuardLastPacketSummary,
+      spoolPath: overnightGuardSpoolPath,
+      spoolSizeSummary: overnightGuardSpoolSizeSummary,
+      sqliteMirrorSummary: overnightGuardSQLiteMirrorSummary,
+      powerSummary: overnightGuardPowerSummary,
+      watchdogSummary: overnightGuardWatchdogSummary,
+      warning: overnightGuardWarning,
+      exportStatus: overnightGuardExportStatus,
+      exportInProgress: overnightGuardExportInProgress,
+      exportURL: overnightGuardExportURL,
+      exportManifestURL: overnightGuardExportManifestURL,
+      exportManifestError: overnightGuardExportManifestError,
+      canExportLastSession: overnightGuardCanExportLastSession
+    )
+  }
+  var homeActivityTimelineItems: [ActivityTimelineItem] {
+    get { homeActivityTimeline.items }
+    set { homeActivityTimeline.items = newValue }
+  }
+  var homeActivityTimelineStatus: String {
+    get { homeActivityTimeline.status }
+    set { homeActivityTimeline.status = newValue }
+  }
   var pendingHealthPacketCaptureLastPacketSummary: String?
   var pendingPacketImportStatus: String?
   var lastPacketImportRevisionPublishedAt = Date.distantPast
@@ -163,6 +297,7 @@ final class GooseAppModel: ObservableObject {
   var captureFrameRowBuildQueueDepth = 0
   var captureFrameRowBuildQueueHighWatermark = 0
   let pipelinePerformanceLogLock = NSLock()
+  var lastPipelinePerformanceStatusPublishedAt = Date.distantPast
   var lastPipelinePerformanceLoggedAt = Date.distantPast
   var respiratoryPacketWatchK18Count = 0
   var respiratoryPacketWatchK24Count = 0
@@ -281,7 +416,7 @@ final class GooseAppModel: ObservableObject {
   static let healthPacketCaptureUIUpdateInterval: TimeInterval = 1
   static let healthPacketCaptureSummaryLogInterval: TimeInterval = 10
   static let parsedFrameSummaryUpdateInterval: TimeInterval = 1
-  static let heartRateHourlyRangePublishInterval: TimeInterval = 1
+  static let heartRateHourlyRangePublishInterval: TimeInterval = 10
   static let packetUIStatePublishInterval: TimeInterval = 0.2
   static let restingHeartRateFrameWriteInterval: TimeInterval = 0.1
   static let captureFrameWriteQueueMaxRows = 2048
@@ -290,6 +425,7 @@ final class GooseAppModel: ObservableObject {
   static let movementPacketStatusInterval: TimeInterval = 1
   static let movementPacketLogInterval: TimeInterval = 5
   static let whoopDataSignalLogInterval: TimeInterval = 10
+  static let pipelinePerformanceStatusPublishInterval: TimeInterval = 1
   static let pipelinePerformanceLogInterval: TimeInterval = 5
   static let whoopEventStatusInterval: TimeInterval = 1
   static let whoopDataSignalStatusInterval: TimeInterval = 1

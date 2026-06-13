@@ -5,8 +5,7 @@ import UIKit
 
 extension HealthDataStore {
   func dailyRecoveryMetrics() -> [[String: Any]] {
-    Self.array(packetInputReports["daily_recovery"]?["metrics"])
-      .filter { Self.localHealthMetricRowIsDisplaySafe($0) }
+    safePacketMetricRows(for: "daily_recovery")
   }
 
   func dailyRecoveryMetricsWithRestingHR() -> [[String: Any]] {
@@ -36,6 +35,12 @@ extension HealthDataStore {
     calendar: Calendar = .current
   ) -> [String: Any]? {
     let dateKey = date.map { Self.metricDateKey(for: $0, calendar: calendar) }
+    if Self.cachedDailyRecoveryUnavailableMetricIDs.contains(metricID),
+       packetInputReports["daily_recovery"] != nil {
+      return preferredDailyRecoveryUnavailableMetricByCacheKey[
+        Self.dailyRecoveryUnavailableMetricCacheKey(metricID: metricID, dateKey: dateKey)
+      ]
+    }
     return dailyRecoveryUnavailableMetrics()
       .filter { metric in
         if let dateKey, metric["date_key"] as? String != dateKey {
@@ -56,7 +61,7 @@ extension HealthDataStore {
       .first
   }
 
-  static func dailyRecoveryUnavailableMetric(_ metric: [String: Any], matches metricID: String) -> Bool {
+  nonisolated static func dailyRecoveryUnavailableMetric(_ metric: [String: Any], matches metricID: String) -> Bool {
     if let inputsMetricID = jsonObject(fromJSONString: metric["inputs_json"])?["metric_id"] as? String,
        inputsMetricID == metricID {
       return true
@@ -66,11 +71,11 @@ extension HealthDataStore {
     return dailyMetricID.contains(sanitizedMetricID)
   }
 
-  static func recoveryMetricIDToken(_ value: String) -> String {
+  nonisolated static func recoveryMetricIDToken(_ value: String) -> String {
     metricIDToken(value)
   }
 
-  static func metricIDToken(_ value: String) -> String {
+  nonisolated static func metricIDToken(_ value: String) -> String {
     value.lowercased().unicodeScalars.map { scalar in
       CharacterSet.alphanumerics.contains(scalar) ? String(scalar) : "-"
     }.joined()
@@ -159,9 +164,8 @@ extension HealthDataStore {
     )
   }
 
-  static func preferredDailyRecoveryMetric(from metrics: [[String: Any]], valueKey: String) -> [String: Any]? {
+  nonisolated static func preferredDailyRecoveryMetric(from metrics: [[String: Any]], valueKey: String) -> [String: Any]? {
     metrics
-      .filter { localHealthMetricRowIsDisplaySafe($0) }
       .sorted { lhs, rhs in
         dailyRecoveryMetric(lhs, isBetterThan: rhs, valueKey: valueKey)
       }
@@ -178,9 +182,6 @@ extension HealthDataStore {
   ) -> [[String: Any]] {
     var rowsByDate: [String: [String: Any]] = [:]
     for metric in metrics {
-      guard localHealthMetricRowIsDisplaySafe(metric) else {
-        continue
-      }
       guard let dateKey = metric["date_key"] as? String ?? metric["date"] as? String,
             let value = doubleValue(metric[valueKey]) else {
         continue
@@ -203,7 +204,7 @@ extension HealthDataStore {
     dailyRecoveryMetric(lhs, isBetterThan: rhs, valueKey: "resting_hr_bpm")
   }
 
-  static func dailyRecoveryMetric(
+  nonisolated static func dailyRecoveryMetric(
     _ lhs: [String: Any],
     isBetterThan rhs: [String: Any],
     valueKey _: String
@@ -225,7 +226,6 @@ extension HealthDataStore {
 
   static func preferredStepMetric(from metrics: [[String: Any]]) -> [String: Any]? {
     metrics
-      .filter { localHealthMetricRowIsDisplaySafe($0) }
       .filter { intValue($0["steps"]) != nil }
       .sorted { lhs, rhs in
         let lhsPriority = stepMetricSourcePriority(lhs["source_kind"] as? String)
@@ -250,7 +250,6 @@ extension HealthDataStore {
     valueKey: String
   ) -> [String: Any]? {
     metrics
-      .filter { localHealthMetricRowIsDisplaySafe($0) }
       .filter { doubleValue($0[valueKey]) != nil }
       .sorted { lhs, rhs in
         dailyActivityMetric(lhs, isBetterThan: rhs, valueKey: valueKey)
@@ -264,9 +263,6 @@ extension HealthDataStore {
   ) -> [[String: Any]] {
     var rowsByDate: [String: [String: Any]] = [:]
     for metric in metrics {
-      guard localHealthMetricRowIsDisplaySafe(metric) else {
-        continue
-      }
       guard let dateKey = metric["date_key"] as? String ?? metric["date"] as? String,
             let value = doubleValue(metric[valueKey]) else {
         continue

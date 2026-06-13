@@ -164,28 +164,163 @@ extension GooseBLEClient {
   }
 
   func applyBLEUIStateSnapshot(_ snapshot: BLEUIStateSnapshot) {
+    var nextLiveHeartRateBPM = liveHeartRateBPM
+    var nextLiveHeartRateSource = liveHeartRateSource
+    var nextLiveHeartRateUpdatedAt = liveHeartRateUpdatedAt
+    var nextRestingHeartRateEstimateBPM = restingHeartRateEstimateBPM
+    var nextRestingHeartRateEstimateSampleCount = restingHeartRateEstimateSampleCount
+    var nextRestingHeartRateEstimateSource = restingHeartRateEstimateSource
+    var nextRestingHeartRateEstimateUpdatedAt = restingHeartRateEstimateUpdatedAt
+    var nextLiveHRVRMSSD = liveHRVRMSSD
+    var nextLiveHRVRRIntervalCount = liveHRVRRIntervalCount
+    var nextLiveHRVRMSSDSampleCount = liveHRVRMSSDSampleCount
+    var nextLiveHRVSource = liveHRVSource
+    var nextLiveHRVUpdatedAt = liveHRVUpdatedAt
+
     if let liveHeartRate = snapshot.liveHeartRate {
-      liveHeartRateBPM = liveHeartRate.bpm
-      liveHeartRateSource = liveHeartRate.source
-      liveHeartRateUpdatedAt = liveHeartRate.updatedAt
+      nextLiveHeartRateBPM = liveHeartRate.bpm
+      nextLiveHeartRateSource = liveHeartRate.source
+      nextLiveHeartRateUpdatedAt = liveHeartRate.updatedAt
     }
     if let restingHeartRate = snapshot.restingHeartRate {
-      restingHeartRateEstimateBPM = restingHeartRate.bpm
-      restingHeartRateEstimateSampleCount = restingHeartRate.sampleCount
-      restingHeartRateEstimateSource = restingHeartRate.source
-      restingHeartRateEstimateUpdatedAt = restingHeartRate.updatedAt
+      nextRestingHeartRateEstimateBPM = restingHeartRate.bpm
+      nextRestingHeartRateEstimateSampleCount = restingHeartRate.sampleCount
+      nextRestingHeartRateEstimateSource = restingHeartRate.source
+      nextRestingHeartRateEstimateUpdatedAt = restingHeartRate.updatedAt
     }
     if let hrv = snapshot.hrv {
-      liveHRVRMSSD = hrv.rmssd
-      liveHRVRRIntervalCount = hrv.rrIntervalCount
-      liveHRVRMSSDSampleCount = hrv.sampleCount
-      liveHRVSource = hrv.source
-      liveHRVUpdatedAt = hrv.updatedAt
+      nextLiveHRVRMSSD = hrv.rmssd
+      nextLiveHRVRRIntervalCount = hrv.rrIntervalCount
+      nextLiveHRVRMSSDSampleCount = hrv.sampleCount
+      nextLiveHRVSource = hrv.source
+      nextLiveHRVUpdatedAt = hrv.updatedAt
+    }
+
+    if nextLiveHeartRateBPM != liveHeartRateBPM
+      || nextLiveHeartRateSource != liveHeartRateSource
+      || nextLiveHeartRateUpdatedAt != liveHeartRateUpdatedAt
+      || nextRestingHeartRateEstimateBPM != restingHeartRateEstimateBPM
+      || nextRestingHeartRateEstimateSampleCount != restingHeartRateEstimateSampleCount
+      || nextRestingHeartRateEstimateSource != restingHeartRateEstimateSource
+      || nextRestingHeartRateEstimateUpdatedAt != restingHeartRateEstimateUpdatedAt
+      || nextLiveHRVRMSSD != liveHRVRMSSD
+      || nextLiveHRVRRIntervalCount != liveHRVRRIntervalCount
+      || nextLiveHRVRMSSDSampleCount != liveHRVRMSSDSampleCount
+      || nextLiveHRVSource != liveHRVSource
+      || nextLiveHRVUpdatedAt != liveHRVUpdatedAt {
+      objectWillChange.send()
+      liveHeartRateBPM = nextLiveHeartRateBPM
+      liveHeartRateSource = nextLiveHeartRateSource
+      liveHeartRateUpdatedAt = nextLiveHeartRateUpdatedAt
+      restingHeartRateEstimateBPM = nextRestingHeartRateEstimateBPM
+      restingHeartRateEstimateSampleCount = nextRestingHeartRateEstimateSampleCount
+      restingHeartRateEstimateSource = nextRestingHeartRateEstimateSource
+      restingHeartRateEstimateUpdatedAt = nextRestingHeartRateEstimateUpdatedAt
+      liveHRVRMSSD = nextLiveHRVRMSSD
+      liveHRVRRIntervalCount = nextLiveHRVRRIntervalCount
+      liveHRVRMSSDSampleCount = nextLiveHRVRMSSDSampleCount
+      liveHRVSource = nextLiveHRVSource
+      liveHRVUpdatedAt = nextLiveHRVUpdatedAt
+      syncLiveVitalsStore()
     }
     if let snapshotLastSyncAt = snapshot.lastSyncAt,
-       lastSyncAt.map({ $0 < snapshotLastSyncAt }) ?? true {
+       lastSyncAt.map({ $0 < snapshotLastSyncAt }) ?? true,
+       lastSyncAt == nil || snapshotLastSyncAt.timeIntervalSince(lastLiveSyncAtPublishedAt) >= Self.liveLastSyncAtPublishInterval {
+      lastLiveSyncAtPublishedAt = snapshotLastSyncAt
       lastSyncAt = snapshotLastSyncAt
     }
+  }
+
+  func syncLiveVitalsStore() {
+    liveVitals.apply(
+      liveHeartRateBPM: liveHeartRateBPM,
+      liveHeartRateSource: liveHeartRateSource,
+      liveHeartRateUpdatedAt: liveHeartRateUpdatedAt,
+      restingHeartRateEstimateBPM: restingHeartRateEstimateBPM,
+      restingHeartRateEstimateSampleCount: restingHeartRateEstimateSampleCount,
+      restingHeartRateEstimateSource: restingHeartRateEstimateSource,
+      restingHeartRateEstimateUpdatedAt: restingHeartRateEstimateUpdatedAt,
+      liveHRVRMSSD: liveHRVRMSSD,
+      liveHRVRRIntervalCount: liveHRVRRIntervalCount,
+      liveHRVRMSSDSampleCount: liveHRVRMSSDSampleCount,
+      liveHRVSource: liveHRVSource,
+      liveHRVUpdatedAt: liveHRVUpdatedAt
+    )
+  }
+
+  func syncDeviceStatusStore() {
+    deviceStatus.apply(
+      activeDeviceName: activeDeviceName,
+      connectionState: connectionState,
+      isScanning: isScanning,
+      lastSyncAt: lastSyncAt,
+      batteryLevelPercent: batteryLevelPercent,
+      batteryUpdatedAt: batteryUpdatedAt,
+      batteryIsCharging: batteryIsCharging,
+      batteryPowerStatus: batteryPowerStatus
+    )
+  }
+
+  func syncDeviceAdvancedStatusStore() {
+    deviceAdvancedStatus.apply(
+      firmwareSummary: firmwareVersion ?? softwareRevision ?? "Unknown",
+      modelSummary: deviceAdvancedModelSummary,
+      batteryChargeDisplayStatus: batteryChargeDisplayStatus,
+      highFrequencyHistorySyncDisplaySummary: highFrequencyHistorySyncDisplaySummary,
+      highFrequencyHistorySyncActive: highFrequencyHistorySyncActive,
+      canWriteHighFrequencyHistorySync: canWriteHighFrequencyHistorySync,
+      canSyncClock: canSyncClock,
+      strapClockOffsetSeconds: strapClockOffsetSeconds,
+      strapClockUpdatedAt: strapClockUpdatedAt,
+      strapClockStatus: strapClockStatus,
+      canWriteAlarm: canWriteAlarm,
+      alarmWriteSupportSummary: alarmWriteSupportSummary,
+      alarmDisplaySummary: alarmDisplaySummary,
+      lastAlarmResponseSummary: lastAlarmResponseSummary,
+      lastAlarmEventSummary: lastAlarmEventSummary,
+      lastAlarmCommandFrameHex: lastAlarmCommandFrameHex,
+      lastAlarmResponsePayloadHex: lastAlarmResponsePayloadHex,
+      lastAlarmEventPayloadHex: lastAlarmEventPayloadHex,
+      lastAlarmScheduledAt: lastAlarmScheduledAt
+    )
+  }
+
+  private var deviceAdvancedModelSummary: String {
+    if let modelNumber {
+      return modelNumber
+    }
+    if let hardwareRevision {
+      return "Hardware \(hardwareRevision)"
+    }
+    return activeDeviceName
+  }
+
+  func syncConnectionStatusStore() {
+    connectionStatus.apply(
+      bluetoothState: bluetoothState,
+      connectionState: connectionState,
+      reconnectState: reconnectState,
+      rememberedDeviceDescription: rememberedDeviceDescription,
+      discoveredDevices: discoveredDevices,
+      selectedDeviceID: selectedDeviceID,
+      isScanning: isScanning,
+      canScan: canScan,
+      canConnect: canConnect,
+      canReconnectRemembered: canReconnectRemembered,
+      canSendHello: canSendHello,
+      hasRememberedDevice: hasRememberedDevice
+    )
+  }
+
+  func syncHistoricalSyncStatusStore() {
+    historicalSyncStatusStore.apply(
+      status: historicalSyncStatus,
+      packetCount: historicalPacketCount,
+      isSyncing: isHistoricalSyncing,
+      canSyncHistorical: canSyncHistorical,
+      completedAt: lastHistoricalSyncCompletedAt,
+      lastRangeCommandStatus: lastHistoricalRangeCommandStatus
+    )
   }
 
   func record(
@@ -286,7 +421,7 @@ extension GooseBLEClient {
       let handle = try FileHandle(forWritingTo: url)
       try handle.seekToEnd()
       try handle.write(contentsOf: data)
-      try Self.synchronizeAndCloseDiagnosticLogHandle(handle)
+      try Self.closeDiagnosticLogHandle(handle)
     } catch {
       logDiagnosticLogError(url: url, error: error)
     }
@@ -368,6 +503,14 @@ extension GooseBLEClient {
     }
     if let fileError {
       throw fileError
+    }
+  }
+
+  static func closeDiagnosticLogHandle(_ handle: FileHandle) throws {
+    do {
+      try handle.close()
+    } catch {
+      throw error
     }
   }
 

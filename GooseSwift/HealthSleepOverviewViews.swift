@@ -6,7 +6,8 @@ import UIKit
 struct SleepV2OverviewPage: View {
   @EnvironmentObject private var router: AppRouter
   @ObservedObject var store: HealthDataStore
-  @ObservedObject var ble: GooseBLEClient
+  let ble: GooseBLEClient
+  @ObservedObject var historicalSync: GooseHistoricalSyncStatusStore
   @Binding var selectedDate: Date
   @Environment(\.colorScheme) private var colorScheme
   @State private var showingInsightsSheet = false
@@ -85,7 +86,7 @@ struct SleepV2OverviewPage: View {
                 onSleepNeeded: { showingSleepNeededSheet = true }
               )
 
-              SleepV2BandSyncCard(store: store, ble: ble, palette: palette) {
+              SleepV2BandSyncCard(store: store, historicalSync: historicalSync, palette: palette) {
                 startBandSleepSync(automatic: false)
               }
 
@@ -143,14 +144,14 @@ struct SleepV2OverviewPage: View {
       store.loadBridgeCatalogsIfNeeded()
       startBandSleepSyncIfReady()
     }
-    .onChange(of: ble.canSyncHistorical) { _, _ in
+    .onChange(of: historicalSync.canSyncHistorical) { _, _ in
       startBandSleepSyncIfReady()
     }
-    .onChange(of: ble.historicalSyncStatus) { _, newValue in
+    .onChange(of: historicalSync.status) { _, newValue in
       if newValue == "synced" {
-        store.refreshSleepAfterBandSync(packetCount: ble.historicalPacketCount)
+        store.refreshSleepAfterBandSync(packetCount: historicalSync.packetCount)
       } else if newValue == "failed" {
-        store.markBandSleepSyncFailed(ble.historicalSyncStatus)
+        store.markBandSleepSyncFailed(historicalSync.status)
       }
     }
     .sheet(isPresented: $showingDatePicker) {
@@ -162,7 +163,7 @@ struct SleepV2OverviewPage: View {
       )
     }
 	    .sheet(isPresented: $showingAlarmSheet) {
-	      SleepV2AlarmSheet(ble: ble)
+	      SleepV2AlarmSheet(ble: ble, alarmStatus: ble.deviceAdvancedStatus)
 	    }
 	    .sheet(isPresented: $showingSleepNeededSheet) {
 	      SleepV2SleepNeededSheet(palette: palette)
@@ -202,7 +203,7 @@ struct SleepV2OverviewPage: View {
   }
 
   private var coachTip: CoachInlineTip {
-    CoachTipFactory.sleepTip(healthStore: store, ble: ble)
+    CoachTipFactory.sleepTip(healthStore: store, alarmSummary: ble.alarmDisplaySummary)
   }
 
   private func startBandSleepSyncIfReady() {
@@ -217,7 +218,7 @@ struct SleepV2OverviewPage: View {
       }
       return
     }
-    guard !autoBandSyncRequested, ble.canSyncHistorical else {
+    guard !autoBandSyncRequested, historicalSync.canSyncHistorical else {
       return
     }
     autoBandSyncRequested = true
@@ -227,14 +228,13 @@ struct SleepV2OverviewPage: View {
   private func startBandSleepSync(automatic: Bool) {
     store.markBandSleepSyncRequested(
       automatic: automatic,
-      canSync: ble.canSyncHistorical,
-      detail: ble.historicalSyncStatus
+      canSync: historicalSync.canSyncHistorical,
+      detail: historicalSync.status
     )
-    guard ble.canSyncHistorical else {
+    guard historicalSync.canSyncHistorical else {
       return
     }
     ble.syncHistoricalPackets(rangeFirst: true)
   }
 
 }
-

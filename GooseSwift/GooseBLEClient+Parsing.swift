@@ -438,6 +438,7 @@ extension GooseBLEClient {
     liveHeartRateBPM = nil
     liveHeartRateSource = "waiting"
     liveHeartRateUpdatedAt = nil
+    syncLiveVitalsStore()
     self.resetRealtimeHeartRatePublishState()
     connectedAt = nil
     lastSyncAt = nil
