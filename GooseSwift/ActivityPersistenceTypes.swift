@@ -117,7 +117,7 @@ struct ActivityTimelineRefreshResult {
   let status: String
 }
 
-struct ActivityTimelineItem: Identifiable, Equatable {
+struct ActivityTimelineItem: Identifiable, Equatable, Hashable {
   let id: String
   let startedAt: Date
   let title: String
@@ -126,5 +126,6 @@ struct ActivityTimelineItem: Identifiable, Equatable {
   let durationSeconds: TimeInterval
   let distanceMeters: Double?
   let averageHeartRate: Int?
+  let maxHeartRate: Int?
+  let zoneDurations: [Int: TimeInterval]
 }
-

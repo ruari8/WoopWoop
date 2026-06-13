@@ -4,12 +4,23 @@ import SwiftUI
 import UIKit
 
 extension HealthDataStore {
-  func runPacketScores() {
-    let baseArgs = bridgeBaseArgs(requireTrustedEvidence: false)
+  nonisolated static func packetScoreBridgeReports(databasePath: String) -> Result<[String: [String: Any]], Error> {
+    let bridge = GooseRustBridge()
+    let baseArgs: [String: Any] = [
+      "database_path": databasePath,
+      "start": "0000",
+      "end": "9999",
+      "min_owned_captures": 2,
+      "require_trusted_evidence": false,
+    ]
+
     do {
-      packetScoreReports["sleep"] = try sleepScoreReport(baseArgs: baseArgs)
-      refreshPrimarySleepFromScoreReport()
-      packetScoreReports["strain"] = try bridge.request(
+      var reports: [String: [String: Any]] = [:]
+      reports["sleep"] = try bridge.request(
+        method: "metrics.sleep_score_from_features",
+        args: baseArgs.merging(Self.packetScoreSleepArgs()) { _, new in new }
+      )
+      reports["strain"] = try bridge.request(
         method: "metrics.strain_score_from_features",
         args: baseArgs.merging([
           "resting_start": "0000",
@@ -17,11 +28,11 @@ extension HealthDataStore {
           "resting_baseline_min_days": 3,
         ]) { _, new in new }
       )
-      packetScoreReports["recovery"] = try bridge.request(
+      reports["recovery"] = try bridge.request(
         method: "metrics.recovery_score_from_features",
-        args: baseArgs.merging(recoveryScoreBridgeArgs()) { _, new in new }
+        args: baseArgs.merging(Self.packetScoreRecoveryArgs()) { _, new in new }
       )
-      packetScoreReports["stress"] = try bridge.request(
+      reports["stress"] = try bridge.request(
         method: "metrics.stress_score_from_features",
         args: baseArgs.merging([
           "resting_start": "0000",
@@ -35,9 +46,75 @@ extension HealthDataStore {
           "hrv_baseline_min_days": 3,
         ]) { _, new in new }
       )
-      packetScoreStatus = "Bridge packet-derived scores recomputed"
+      return .success(reports)
     } catch {
-      packetScoreStatus = "Bridge score run blocked: \(Self.shortError(error))"
+      return .failure(error)
+    }
+  }
+
+  nonisolated static func packetScoreSleepArgs() -> [String: Any] {
+    [
+      "sleep_need_minutes": 480.0,
+      "low_motion_threshold_0_to_1": 0.05,
+      "disturbance_motion_threshold_0_to_1": 0.20,
+      "target_midpoint_minutes_since_midnight": 180.0,
+      "history_import_in_progress": false,
+      "algorithm_id": "goose.sleep.v1",
+    ]
+  }
+
+  nonisolated static func packetScoreRecoveryArgs() -> [String: Any] {
+    [
+      "hrv_start": "0000",
+      "hrv_end": "9999",
+      "hrv_baseline_start": "0000",
+      "hrv_baseline_end": "9999",
+      "resting_start": "0000",
+      "resting_end": "9999",
+      "sleep_start": "0000",
+      "sleep_end": "9999",
+      "prior_strain_start": "0000",
+      "prior_strain_end": "9999",
+      "resting_baseline_min_days": 3,
+      "hrv_min_rr_intervals_to_compute": 2,
+      "hrv_baseline_min_days": 3,
+      "sleep_need_minutes": 480.0,
+      "low_motion_threshold_0_to_1": 0.05,
+      "disturbance_motion_threshold_0_to_1": 0.20,
+      "target_midpoint_minutes_since_midnight": 180.0,
+      "prior_strain_resting_baseline_min_days": 3,
+    ]
+  }
+
+  func runPacketScores(completion: (() -> Void)? = nil) {
+    guard !packetScoreIsRunning else {
+      packetScoreStatus = "Score recompute already running..."
+      completion?()
+      return
+    }
+    let runID = UUID()
+    packetScoreRunID = runID
+    packetScoreIsRunning = true
+    let databasePath = databasePath
+    packetScoreStatus = "Recomputing sleep, recovery, strain, and stress scores..."
+
+    packetScoreQueue.async {
+      let result = Self.packetScoreBridgeReports(databasePath: databasePath)
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.packetScoreRunID == runID else {
+          return
+        }
+        self.packetScoreIsRunning = false
+        switch result {
+        case .success(let reports):
+          self.packetScoreReports = reports
+          self.refreshPrimarySleepFromScoreReport()
+          self.packetScoreStatus = "Scores recomputed from local packet inputs"
+        case .failure(let error):
+          self.packetScoreStatus = "Score run blocked: \(Self.shortError(error))"
+        }
+        completion?()
+      }
     }
   }
 
@@ -83,6 +160,73 @@ extension HealthDataStore {
     stableDailyMetrics: Bool = false
   ) -> [HealthMetricSnapshot] {
     var snapshots = Self.baseLandingSnapshots
+    if let index = snapshots.firstIndex(where: { $0.route == .heartRate }) {
+      let base = snapshots[index]
+      if let liveHeartRateBPM {
+        snapshots[index] = HealthMetricSnapshot(
+          id: base.id,
+          route: base.route,
+          group: base.group,
+          title: base.title,
+          value: "\(liveHeartRateBPM)",
+          unit: "bpm",
+          status: "Live",
+          freshness: Self.relativeText(for: liveHeartRateUpdatedAt) ?? "Now",
+          provenance: liveHeartRateSource,
+          source: .live("BLE heart-rate stream"),
+          systemImage: base.systemImage,
+          tint: base.tint,
+          trend: Self.liveHeartRateHourlyTrend(
+            base: base.trend,
+            fallbackValue: Double(liveHeartRateBPM),
+            fallbackValueText: "\(liveHeartRateBPM)",
+            sampleCount: 1
+          )
+        )
+      } else if let sample = heartRateSeriesStore.latestSample() {
+        snapshots[index] = HealthMetricSnapshot(
+          id: base.id,
+          route: base.route,
+          group: base.group,
+          title: base.title,
+          value: "\(sample.bpm)",
+          unit: "bpm",
+          status: "Latest sample",
+          freshness: Self.relativeText(for: sample.capturedAt) ?? "Stored",
+          provenance: sample.source,
+          source: .live("BLE heart-rate sample store"),
+          systemImage: base.systemImage,
+          tint: base.tint,
+          trend: Self.liveHeartRateHourlyTrend(
+            base: base.trend,
+            fallbackValue: Double(sample.bpm),
+            fallbackValueText: "\(sample.bpm)",
+            sampleCount: 1
+          )
+        )
+      }
+    }
+    if let index = snapshots.firstIndex(where: { $0.route == .steps }) {
+      let base = snapshots[index]
+      let stepsText = whoopStepsDisplayText()
+      if stepsText != "--" {
+        snapshots[index] = HealthMetricSnapshot(
+          id: base.id,
+          route: base.route,
+          group: base.group,
+          title: base.title,
+          value: stepsText,
+          unit: "",
+          status: whoopStepsStatusText(),
+          freshness: "Today",
+          provenance: whoopStepsSource().detail,
+          source: whoopStepsSource(),
+          systemImage: base.systemImage,
+          tint: base.tint,
+          trend: Self.emptyTrend(from: base.trend, packetCount: packetEvidenceFrameCount())
+        )
+      }
+    }
     if let index = snapshots.firstIndex(where: { $0.route == .sleep }) {
       snapshots[index] = sleepSnapshot(base: snapshots[index])
     }
@@ -427,21 +571,21 @@ extension HealthDataStore {
 
     if let latest = Self.preferredStepMetric(from: dailyActivityMetrics()),
        let dateKey = latest["date_key"] as? String {
-      return "No today step metric | latest stored \(dateKey)"
+      return "No steps for today; latest stored \(dateKey)"
     }
 
     if let report = packetInputReports["step_counter_rollup"] {
-      return firstPacketAction(in: report) ?? "WHOOP step counter rollup blocked"
+      return firstPacketAction(in: report) ?? "Walk with the band connected, then run Extract again."
     }
 
     if let report = packetInputReports["step_counter_ingest"] {
       let persisted = Self.intValue(report["persisted_sample_count"]) ?? 0
       let candidates = Self.intValue(report["counter_candidate_count"]) ?? 0
       if persisted > 0 {
-        return "\(persisted) WHOOP counter samples stored; daily delta pending"
+        return "\(persisted) step samples stored; needs one more for a daily total"
       }
       if candidates > 0 {
-        return "\(candidates) WHOOP counter candidates found; ingest blocked"
+        return "\(candidates) step candidates found; keep walking and extract again"
       }
     }
 
@@ -455,9 +599,9 @@ extension HealthDataStore {
     }
 
     if packetInputStatus == "No run" {
-      return "Needs WHOOP packet extract"
+      return "Run Extract in Packet Inputs"
     }
-    return packetInputStatus
+    return Self.userFacingPacketActionText(packetInputStatus)
   }
 
   func whoopStepsSource(for date: Date = Date(), calendar: Calendar = .current) -> HealthDataSource {

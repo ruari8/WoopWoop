@@ -2,11 +2,10 @@ import SwiftUI
 
 struct HomeTimelineSection: View {
   let sleep: HealthMetricSnapshot
-  let activity: HealthMetricSnapshot
   let recovery: HealthMetricSnapshot
   let activities: [ActivityTimelineItem]
   let openSleep: () -> Void
-  let openActivity: () -> Void
+  let openActivity: (ActivityTimelineItem) -> Void
   let openRecovery: () -> Void
 
   var body: some View {
@@ -53,20 +52,7 @@ struct HomeTimelineSection: View {
       ),
     ]
 
-    if activities.isEmpty {
-      entries.append(
-        HomeTimelineEntry(
-          id: "activity-load",
-          sortMinutes: 12 * 60 + 30,
-          time: "12:30",
-          title: "Activity load",
-          subtitle: summary(for: activity),
-          systemImage: "arrow.triangle.2.circlepath",
-          tint: activity.tint,
-          action: .activity
-        )
-      )
-    } else {
+    if !activities.isEmpty {
       entries.append(contentsOf: activities.map(activityEntry))
     }
     return entries.sorted { $0.sortMinutes > $1.sortMinutes }
@@ -84,7 +70,7 @@ struct HomeTimelineSection: View {
       subtitle: activitySummary(for: item),
       systemImage: systemImage(for: item.activityType),
       tint: tint(for: item.activityType),
-      action: .activity
+      action: .activity(item)
     )
   }
 
@@ -108,8 +94,8 @@ struct HomeTimelineSection: View {
     switch action {
     case .sleep:
       openSleep()
-    case .activity:
-      openActivity()
+    case .activity(let item):
+      openActivity(item)
     case .recovery:
       openRecovery()
     }
@@ -141,7 +127,7 @@ struct HomeTimelineSection: View {
     case "strength":
       return .red
     default:
-      return activity.tint
+      return .green
     }
   }
 
@@ -192,7 +178,7 @@ struct HomeTimelineEntry: Identifiable, Equatable {
 
 enum HomeTimelineAction: Equatable {
   case sleep
-  case activity
+  case activity(ActivityTimelineItem)
   case recovery
 }
 
@@ -327,4 +313,3 @@ struct HomeCardSurfaceModifier: ViewModifier {
     colorScheme == .dark ? .black.opacity(0.10) : .black.opacity(prominent ? 0.026 : 0.014)
   }
 }
-

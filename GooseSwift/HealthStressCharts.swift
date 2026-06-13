@@ -58,27 +58,6 @@ struct EnergyAndStressChart: View {
               .background(.thinMaterial, in: Capsule())
               .position(x: min(max(x, 74), proxy.size.width - 74), y: 18)
           }
-          HStack {
-            ForEach(points) { point in
-              Text(point.timeLabel)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-            }
-          }
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-          .padding(.bottom, 2)
-          VStack(alignment: .trailing) {
-            Text("100%")
-            Spacer()
-            Text("50%")
-            Spacer()
-            Text("0%")
-          }
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .frame(width: proxy.size.width - 8, height: proxy.size.height - 28, alignment: .trailing)
-          .padding(.top, 8)
         }
       }
     }

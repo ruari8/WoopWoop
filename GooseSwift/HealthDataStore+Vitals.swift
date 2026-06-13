@@ -554,7 +554,7 @@ extension HealthDataStore {
 
   func firstPacketAction(in report: [String: Any]) -> String? {
     Self.firstActionText(in: report).map { text in
-      text.count > 26 ? "\(text.prefix(26))..." : text
+      Self.userFacingPacketActionText(text)
     }
   }
 

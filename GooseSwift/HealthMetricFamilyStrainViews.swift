@@ -234,10 +234,10 @@ struct HealthMetricFamilyView: View {
       let scoreText = summary.score.flatMap { HealthDataStore.numberText($0, fractionDigits: 0) } ?? "--"
       let averageHRText = summary.averageHeartRate.flatMap { HealthDataStore.numberText($0, fractionDigits: 0) }
         .map { "\($0) bpm avg" } ?? "No HR data"
-      let confidenceText = summary.confidence.flatMap { HealthDataStore.numberText($0, fractionDigits: 2) } ?? "--"
+      let sampleText = "\(summary.windows.count) windows"
       return [
         HealthSummaryRow("Stress score", value: summary.hasData ? "\(scoreText)% | \(summary.status)" : summary.status, source: summary.source, systemImage: "waveform.path.ecg"),
-        HealthSummaryRow("Confidence", value: summary.hasData ? confidenceText : "--", source: summary.source, systemImage: "checkmark.seal"),
+        HealthSummaryRow("Samples", value: summary.hasData ? sampleText : "--", source: summary.source, systemImage: "waveform.path"),
         HealthSummaryRow("Inputs", value: summary.hasData ? summary.inputSummary : "No local stress inputs", source: summary.source, systemImage: "checklist"),
         HealthSummaryRow("HRV Input", value: isToday ? store.hrvFeatureSummary() : "--", source: isToday ? store.packetInputSource("HRV feature") : store.recoveryHRVSource(for: selectedDate), systemImage: "waveform.path.ecg"),
         HealthSummaryRow("Average HR", value: averageHRText, source: summary.source, systemImage: "heart"),
@@ -443,14 +443,14 @@ struct StrainV2OverviewPage: View {
       palette.background
         .ignoresSafeArea()
 
-      StrainV2ActivityBackground(palette: palette, showsDecorations: false)
+      SleepV2ScenicBackground(palette: palette)
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
 
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
           ZStack(alignment: .top) {
-            StrainV2ActivityBackground(palette: palette)
+            SleepV2ScenicBackground(palette: palette)
               .frame(height: heroHeight)
               .allowsHitTesting(false)
 

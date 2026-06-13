@@ -9,7 +9,7 @@ struct EnergyBankView: View {
   var body: some View {
     List {
       Section {
-        HealthHero(snapshot: store.snapshot(for: .energyBank), subtitle: "Energy charge, drain, stress, and sleep contribution")
+        HealthHero(snapshot: store.snapshot(for: .energyBank), subtitle: "Local stress and sleep-based energy estimate")
           .listRowInsets(EdgeInsets())
           .listRowBackground(Color.clear)
       }
@@ -27,7 +27,6 @@ struct EnergyBankView: View {
         if let selected = selectedPoint {
           HealthInfoRow(row: HealthSummaryRow("Stress usage window", value: "\(selected.timeLabel) | stress \(Int(selected.stress)) | load \(Int(selected.usage))", source: summary.source, systemImage: "waveform.path.ecg"))
         }
-        HealthInfoRow(row: HealthSummaryRow("Confidence", value: summary.confidence.flatMap { HealthDataStore.numberText($0, fractionDigits: 2) } ?? "--", source: summary.source, systemImage: "checkmark.seal"))
         HealthInfoRow(row: HealthSummaryRow("Inputs", value: summary.inputSummary, source: summary.source, systemImage: "checklist"))
       }
     }
@@ -376,4 +375,3 @@ struct HealthTrendSheet: View {
     }
   }
 }
-

@@ -11,7 +11,9 @@ final class HealthDataStore: ObservableObject {
   @Published var catalogStatus = "Metric catalog not loaded"
   @Published var catalogSource = HealthDataSource.unavailable("metric registry not loaded")
   @Published var packetInputStatus = "No run"
+  @Published var packetInputIsRunning = false
   @Published var packetScoreStatus = "No run"
+  @Published var packetScoreIsRunning = false
   @Published var bandSleepImportStatus = "No band sync yet"
   @Published var externalSleepImportStatus = "External sleep imports disabled"
   @Published var referenceRunStatusByFamily: [String: String] = [:]
@@ -43,11 +45,12 @@ final class HealthDataStore: ObservableObject {
   var referenceComparisonReports: [String: [String: Any]] = [:]
   var packetInputRefreshWorkItem: DispatchWorkItem?
   var packetInputRunID: UUID?
-  var packetInputIsRunning = false
+  var packetScoreRunID: UUID?
   var heartRateTimelineRefreshID: UUID?
   var currentStressEnergySummaryDayStart = Calendar.current.startOfDay(for: Date())
   var heartRateSeriesUpdateObserver: NSObjectProtocol?
   let packetInputQueue = DispatchQueue(label: "com.goose.swift.health.packet-inputs", qos: .utility)
+  let packetScoreQueue = DispatchQueue(label: "com.goose.swift.health.packet-scores", qos: .utility)
   let heartRateTimelineQueue = DispatchQueue(label: "com.goose.swift.health.heart-rate-timeline", qos: .utility)
   let bridgeCatalogQueue = DispatchQueue(label: "com.goose.swift.health.bridge-catalogs", qos: .userInitiated)
   var catalogRefreshInFlight = false

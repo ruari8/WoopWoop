@@ -13,7 +13,7 @@ enum FitnessWorkoutPage: Int, CaseIterable, Identifiable {
   var id: Int { rawValue }
 
   static func pages(for activity: ActivityKind) -> [FitnessWorkoutPage] {
-    activity.usesGPS ? allCases : [.overview, .heartRate, .segment, .split]
+    [.overview, .heartRate]
   }
 }
 
@@ -45,7 +45,7 @@ struct LiveActivityContentView: View {
         FitnessCountdownView(value: countdownValue, activity: session.selectedActivity, onSkip: skipCountdown)
       } else if showingSummary {
         FitnessSummaryView(activity: session.selectedActivity, session: session, liveVitals: liveVitals, locationTracker: locationTracker) {
-          dismiss()
+          finishViewingSummary()
         }
       } else if !session.isActive {
         FitnessActivityPickerStartView(
@@ -295,6 +295,12 @@ struct LiveActivityContentView: View {
     guard session.isActive else {
       return
     }
+    guard FitnessWorkoutPage.pages(for: session.selectedActivity).contains(.segment) else {
+      segmentNumber += 1
+      UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+      model.recordUIAction("activity.segment.marked", detail: "\(segmentNumber)")
+      return
+    }
     let returnPage = selectedPage == .segment ? .overview : selectedPage
     segmentNumber += 1
     selectedPage = .segment
@@ -331,6 +337,12 @@ struct LiveActivityContentView: View {
       distanceMeters: locationTracker.distanceMeters,
       force: force
     )
+  }
+
+  private func finishViewingSummary() {
+    session.clearFinishedWorkout()
+    locationTracker.resetRoute()
+    dismiss()
   }
 
   private func lockControls() {

@@ -16,9 +16,9 @@ extension HealthDataStore {
 
   func metricInputReadinessNextActionSummary() -> String {
     if let action = Self.firstActionText(in: packetInputReports["readiness"]) {
-      return action
+      return Self.userFacingPacketActionText(action)
     }
-    return packetInputStatus == "No run" ? "Run Extract to populate packet-derived inputs" : ""
+    return packetInputStatus == "No run" ? "Run Extract to decode local WHOOP data" : ""
   }
 
   func latestHeartRateSummary(bpm: Int?, source: String, updatedAt: Date?) -> String {
@@ -270,9 +270,9 @@ extension HealthDataStore {
       ?? Self.firstActionText(in: packetInputReports["recovery_sensor_rollup"])
       ?? Self.firstActionText(in: packetInputReports["recovery_unavailable_status"])
       ?? Self.firstActionText(in: packetInputReports["vital_event"]) {
-      return action
+      return Self.userFacingPacketActionText(action)
     }
-    return packetInputStatus == "No run" ? "Run Extract to populate packet-derived inputs" : "Capture trusted vitals packets for respiratory, SpO2, and temperature"
+    return packetInputStatus == "No run" ? "Run Extract to decode local WHOOP data" : "Capture more overnight vitals for respiratory rate, SpO2, and temperature"
   }
 
   func sleepFeatureScoreSummary() -> String {
@@ -687,9 +687,9 @@ extension HealthDataStore {
 
   func packetDerivedScoreNextActionSummary() -> String {
     if let action = ["sleep", "recovery", "strain", "stress"].compactMap({ Self.firstActionText(in: packetScoreReports[$0]) }).first {
-      return action
+      return Self.userFacingPacketActionText(action)
     }
-    return packetScoreStatus == "No run" ? "Run scores to populate packet-derived outputs" : "Replace blocked score inputs with trusted captured packet feature reports"
+    return packetScoreStatus == "No run" ? "Run Scores after Extract finishes" : "Scores need more trusted local inputs"
   }
 
   func referenceComparisonSummary(_ family: String) -> String {

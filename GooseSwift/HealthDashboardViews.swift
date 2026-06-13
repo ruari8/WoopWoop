@@ -118,7 +118,7 @@ struct HealthActivityOverviewSection: View {
     VStack(alignment: .leading, spacing: 12) {
       HealthSectionTitle("Activity")
       LazyVGrid(columns: columns, spacing: 12) {
-        NavigationLink(value: HealthRoute.strain) {
+        NavigationLink(value: HealthRoute.steps) {
           HealthDashboardMetricCard(
             title: "Steps",
             value: steps,
@@ -142,7 +142,7 @@ struct HealthActivityOverviewSection: View {
         }
         .buttonStyle(.plain)
 
-        NavigationLink(value: HealthRoute.healthMonitor) {
+        NavigationLink(value: HealthRoute.heartRate) {
           HealthDashboardMetricCard(
             title: "Heart Rate",
             value: heartRateValue,
@@ -402,6 +402,10 @@ struct HealthRouteContentView: View {
     switch route {
     case .healthMonitor:
       HealthMonitorView(store: store)
+    case .heartRate:
+      HeartRateDetailView(store: store, liveVitals: liveVitals)
+    case .steps:
+      StepsDetailView(store: store)
     case .sleep, .recovery, .strain, .stress:
       HealthMetricFamilyView(
         route: route,
@@ -605,12 +609,31 @@ struct PacketHealthView: View {
 
   var body: some View {
     List {
+      Section("How To Fill Metrics") {
+        Text("Extract decodes local WHOOP packets into usable inputs like HR, motion, steps, HRV, sleep windows, and vitals. Scores then recompute Sleep, Recovery, Strain, and Stress from those local inputs.")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+        Text("Both can take a few seconds on a real phone. While a run is active, keep this page open and wait for the status row to update.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
       Section {
         Button {
           store.runPacketInputs()
         } label: {
-          Label("Extract Packet-Derived Inputs", systemImage: "square.stack.3d.up")
+          HStack {
+            Label(store.packetInputIsRunning ? "Extracting Inputs..." : "Extract Local Packet Inputs", systemImage: "square.stack.3d.up")
+            Spacer()
+            if store.packetInputIsRunning {
+              ProgressView()
+                .controlSize(.small)
+            }
+          }
         }
+        .disabled(store.packetInputIsRunning)
+
+        HealthInfoRow(row: HealthSummaryRow("Input status", value: store.packetInputStatus, source: store.packetInputSource("packet input run status"), systemImage: "clock"))
       }
 
       Section("Packet-Derived Inputs") {
@@ -658,8 +681,18 @@ struct PacketHealthView: View {
         Button {
           store.runPacketScores()
         } label: {
-          Label("Run Packet-Derived Scores", systemImage: "chart.xyaxis.line")
+          HStack {
+            Label(store.packetScoreIsRunning ? "Recomputing Scores..." : "Recompute Sleep, Recovery, Strain, Stress", systemImage: "chart.xyaxis.line")
+            Spacer()
+            if store.packetScoreIsRunning {
+              ProgressView()
+                .controlSize(.small)
+            }
+          }
         }
+        .disabled(store.packetScoreIsRunning)
+
+        HealthInfoRow(row: HealthSummaryRow("Score status", value: store.packetScoreStatus, source: store.packetScoreSource("packet score run status"), systemImage: "clock"))
       }
 
       Section("Packet-Derived Scores") {

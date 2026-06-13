@@ -24,6 +24,8 @@ struct HomeStartActivityFloatingButton: View {
   @ObservedObject var session: ActivitySessionModel
 
   var body: some View {
+    let buttonTint = session.isActive ? session.selectedActivity.tint : Color.green
+
     NavigationLink {
       LiveActivityView(model: model)
     } label: {
@@ -31,7 +33,7 @@ struct HomeStartActivityFloatingButton: View {
         .font(.system(size: 21, weight: .bold))
         .foregroundStyle(.white)
         .frame(width: 54, height: 54)
-        .background(session.selectedActivity.tint, in: Circle())
+        .background(buttonTint, in: Circle())
         .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 7)
         .overlay {
           Circle()
@@ -45,45 +47,20 @@ struct HomeStartActivityFloatingButton: View {
 
 struct HomeDailyScoreCard: View {
   let scores: [HealthMetricSnapshot]
-  let actionSummary: String
-  let coachTip: CoachInlineTip
   let openScore: (HealthRoute) -> Void
-  let openCoach: (String) -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .top, spacing: 12) {
-        ForEach(scores) { score in
-          Button {
-            openScore(score.route)
-          } label: {
-            HomeScoreDial(snapshot: score)
-          }
-          .buttonStyle(.plain)
+    HStack(alignment: .top, spacing: 12) {
+      ForEach(scores) { score in
+        Button {
+          openScore(score.route)
+        } label: {
+          HomeScoreDial(snapshot: score)
         }
+        .buttonStyle(.plain)
       }
-      .frame(maxWidth: .infinity)
-
-      CoachTipCard(tip: displayCoachTip) {
-        openCoach(coachTip.prompt)
-      }
-      .padding(.top, 2)
     }
-  }
-
-  private var displayCoachTip: CoachInlineTip {
-    guard coachTip.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return coachTip
-    }
-    return CoachInlineTip(
-      id: coachTip.id,
-      title: coachTip.title,
-      message: actionSummary,
-      source: coachTip.source,
-      prompt: coachTip.prompt,
-      systemImage: coachTip.systemImage,
-      tint: coachTip.tint
-    )
+    .frame(maxWidth: .infinity)
   }
 }
 
@@ -135,6 +112,158 @@ struct HomeScoreDial: View {
   private var progress: Double {
     let value = firstNumber(in: snapshot.displayValue) ?? 0
     return min(max(value / 100, 0), 1)
+  }
+}
+
+struct HomeCoreMetricsSection: View {
+  let heartRateValue: String
+  let heartRateStatus: String
+  let heartRateSource: HealthDataSource
+  let stepsValue: String
+  let stepsStatus: String
+  let stepsSource: HealthDataSource
+  let openHeartRate: () -> Void
+  let openSteps: () -> Void
+
+  var body: some View {
+    HStack(spacing: 12) {
+      HomeCoreMetricCircle(
+        title: "Heart Rate",
+        value: heartRateValue,
+        unit: heartRateValue == "--" ? "" : "bpm",
+        status: heartRateStatus,
+        systemImage: "heart.fill",
+        tint: .red,
+        source: heartRateSource,
+        action: openHeartRate
+      )
+
+      HomeCoreMetricCircle(
+        title: "Steps",
+        value: stepsValue,
+        unit: "",
+        status: stepsStatus,
+        systemImage: "shoeprints.fill",
+        tint: .green,
+        source: stepsSource,
+        action: openSteps
+      )
+    }
+  }
+}
+
+struct HomeCoreMetricCircle: View {
+  let title: String
+  let value: String
+  let unit: String
+  let status: String
+  let systemImage: String
+  let tint: Color
+  let source: HealthDataSource
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      VStack(spacing: 9) {
+        ZStack {
+          Circle()
+            .stroke(tint.opacity(0.14), lineWidth: 9)
+          Circle()
+            .trim(from: 0, to: progress)
+            .stroke(tint, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+          VStack(spacing: 2) {
+            Text(value)
+              .font(.system(size: 24, weight: .bold, design: .rounded))
+              .monospacedDigit()
+              .foregroundStyle(.primary)
+              .lineLimit(1)
+              .minimumScaleFactor(0.54)
+            if !unit.isEmpty {
+              Text(unit)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            }
+          }
+          .padding(8)
+        }
+        .frame(width: 88, height: 88)
+
+        VStack(spacing: 2) {
+          HStack(spacing: 4) {
+            Image(systemName: systemImage)
+              .font(.caption.weight(.bold))
+              .foregroundStyle(tint)
+            Text(title)
+              .font(.caption.weight(.bold))
+              .foregroundStyle(.primary)
+          }
+          .lineLimit(1)
+          .minimumScaleFactor(0.75)
+          .padding(.top, 2)
+
+          Text(status)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.68)
+        }
+      }
+      .frame(maxWidth: .infinity)
+    }
+    .buttonStyle(.plain)
+    .accessibilityElement(children: .combine)
+  }
+
+  private var progress: Double {
+    if title == "Heart Rate" {
+      let bpm = firstNumber(in: value) ?? 0
+      return min(max(bpm / Double(HeartRateZone.maxHeartRate), 0), 1)
+    }
+    let steps = firstNumber(in: value.replacingOccurrences(of: ",", with: "")) ?? 0
+    return min(max(steps / 10_000, 0), 1)
+  }
+}
+
+struct HomeDataReadinessCard: View {
+  let message: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: "checklist")
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(.blue)
+          .frame(width: 34, height: 34)
+          .background(.blue.opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 5) {
+          Text("Data gaps")
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(.primary)
+          Text(displayMessage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Spacer(minLength: 8)
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(.tertiary)
+          .padding(.top, 8)
+      }
+      .padding(14)
+      .cardSurface(tint: .blue)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var displayMessage: String {
+    let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "Open Packet Inputs to see which local metrics are ready, blocked, or still waiting for WHOOP data." : trimmed
   }
 }
 

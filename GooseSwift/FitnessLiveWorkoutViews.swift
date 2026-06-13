@@ -239,7 +239,7 @@ struct FitnessOverviewPage: View {
           FitnessPaceBlock(value: averageHeartRate.map(String.init) ?? "--", label: "AVERAGE\nHR", color: .white)
             .padding(.bottom, 88)
 
-          FitnessNumberUnit(value: "\(activeCalories)", unit: "KCAL", color: .white, size: 72, unitSize: 40)
+          FitnessNumberUnit(value: "\(activeCalories)", unit: "CAL", color: .white, size: 72, unitSize: 40)
             .padding(.bottom, 18)
         }
       }
@@ -332,7 +332,7 @@ struct FitnessSegmentPage: View {
           }
           .padding(.bottom, 70)
         } else {
-          FitnessPaceBlock(value: "\(activeCalories)", label: "ACTIVE\nKCAL", color: .white)
+          FitnessPaceBlock(value: "\(activeCalories)", label: "ACTIVE\nCAL", color: .white)
             .padding(.bottom, 86)
 
           HStack(alignment: .lastTextBaseline, spacing: 12) {
@@ -394,7 +394,7 @@ struct FitnessSplitPage: View {
           }
           .padding(.bottom, 70)
         } else {
-          FitnessPaceBlock(value: "\(activeCalories)", label: "ACTIVE\nKCAL", color: .white)
+          FitnessPaceBlock(value: "\(activeCalories)", label: "ACTIVE\nCAL", color: .white)
             .padding(.bottom, 86)
 
           HStack(alignment: .lastTextBaseline, spacing: 12) {

@@ -5,6 +5,8 @@ import UIKit
 
 enum HealthRoute: String, CaseIterable, Identifiable, Hashable {
   case healthMonitor
+  case heartRate
+  case steps
   case sleep
   case recovery
   case strain
@@ -21,6 +23,8 @@ enum HealthRoute: String, CaseIterable, Identifiable, Hashable {
   var title: String {
     switch self {
     case .healthMonitor: "Health Monitor"
+    case .heartRate: "Heart Rate"
+    case .steps: "Steps"
     case .sleep: "Sleep"
     case .recovery: "Recovery"
     case .strain: "Strain"
@@ -37,6 +41,8 @@ enum HealthRoute: String, CaseIterable, Identifiable, Hashable {
   var systemImage: String {
     switch self {
     case .healthMonitor: "heart.text.square"
+    case .heartRate: "heart.fill"
+    case .steps: "shoeprints.fill"
     case .sleep: "bed.double"
     case .recovery: "battery.100percent"
     case .strain: "figure.run"

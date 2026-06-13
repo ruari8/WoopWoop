@@ -215,7 +215,7 @@ struct StressV2OverviewPage: View {
       palette.background
         .ignoresSafeArea()
 
-      StressV2ScenicBackground(palette: palette)
+      SleepV2ScenicBackground(palette: palette)
         .frame(height: heroBackgroundHeight)
         .offset(y: min(scrollOffsetY, 0))
         .ignoresSafeArea(edges: .top)
@@ -225,12 +225,12 @@ struct StressV2OverviewPage: View {
         LazyVStack(alignment: .leading, spacing: 0) {
           SleepV2ScrollOffsetProbe()
 
-          StressV2Hero(
+          SleepV2Hero(
             palette: palette,
             title: "Stress",
             dateLabel: dateLabel,
             score: stressScore,
-            status: summary.status,
+            gaugeLabel: summary.status,
             onDateTap: { showingDatePicker = true }
           )
           .frame(height: heroHeight)
@@ -239,9 +239,9 @@ struct StressV2OverviewPage: View {
             HStack(spacing: 12) {
               SleepV2StatCard(
                 palette: palette,
-                systemImage: "checkmark.seal.fill",
-                label: "Confidence",
-                value: stressConfidenceText
+                systemImage: "waveform.path.ecg",
+                label: "Samples",
+                value: stressSampleText
               )
               SleepV2StatCard(
                 palette: palette,
@@ -342,12 +342,8 @@ struct StressV2OverviewPage: View {
     return "\(text) bpm"
   }
 
-  private var stressConfidenceText: String {
-    guard let confidence = summary.confidence,
-          let text = HealthDataStore.numberText(confidence, fractionDigits: 2) else {
-      return "No data"
-    }
-    return text
+  private var stressSampleText: String {
+    summary.sampleCount > 0 ? "\(summary.sampleCount)" : "No data"
   }
 
   private var coachTip: CoachInlineTip {
@@ -709,34 +705,6 @@ struct StressV2TimelineChart: View {
               .position(x: chartPoint(index: peakIndex, size: proxy.size).x, y: 17)
           }
 
-          VStack(alignment: .trailing) {
-            Text("100")
-            Spacer()
-            Text("75")
-            Spacer()
-            Text("50")
-            Spacer()
-            Text("25")
-            Spacer()
-            Text("0")
-          }
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(palette.mutedText)
-          .frame(width: proxy.size.width - 8, height: proxy.size.height - 18, alignment: .trailing)
-          .padding(.top, 6)
-
-          HStack {
-            Text(windows.first?.timeLabel ?? "")
-            Spacer()
-            Text(windows.indices.contains(windows.count / 2) ? windows[windows.count / 2].timeLabel : "")
-            Spacer()
-            Text(windows.last?.timeLabel ?? "")
-          }
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(palette.mutedText)
-          .padding(.horizontal, 10)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-          .padding(.trailing, 28)
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
       }

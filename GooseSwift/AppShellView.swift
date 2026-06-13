@@ -4,7 +4,7 @@ struct AppShellView: View {
   let model: GooseAppModel
   @EnvironmentObject private var router: AppRouter
   @StateObject private var healthStore = HealthDataStore()
-  @State private var homeHealthPath: [HealthRoute] = []
+  @State private var homePath: [HomeRoute] = []
   @State private var homeSelectedDate = Date()
 
   var body: some View {
@@ -35,18 +35,23 @@ struct AppShellView: View {
   @ViewBuilder
   private func tabNavigationStack(for tab: GooseAppTab, isActive: Bool) -> some View {
     if tab == .home {
-      NavigationStack(path: $homeHealthPath) {
+      NavigationStack(path: $homePath) {
         tabContent(for: tab, isActive: isActive)
-          .navigationDestination(for: HealthRoute.self) { route in
-            HealthRouteDestinationView(
-              route: route,
-              store: healthStore,
-              ble: model.ble,
-              liveVitals: model.ble.liveVitals,
-              activitySession: model.activitySession,
-              selectedDate: $homeSelectedDate,
-              recordUIAction: model.recordUIAction
-            )
+          .navigationDestination(for: HomeRoute.self) { route in
+            switch route {
+            case .health(let healthRoute):
+              HealthRouteDestinationView(
+                route: healthRoute,
+                store: healthStore,
+                ble: model.ble,
+                liveVitals: model.ble.liveVitals,
+                activitySession: model.activitySession,
+                selectedDate: $homeSelectedDate,
+                recordUIAction: model.recordUIAction
+              )
+            case .activity(let item):
+              ActivityTimelineDetailView(item: item)
+            }
           }
       }
     } else if tab == .health {
@@ -75,7 +80,8 @@ struct AppShellView: View {
           activityTimeline: model.homeActivityTimeline,
           healthStore: healthStore,
           selectedDate: $homeSelectedDate,
-          openHealthRoute: openHomeHealthRoute
+          openHealthRoute: openHomeHealthRoute,
+          openActivity: openHomeActivity
         )
       case .health:
         HealthView(model: model, liveVitals: model.ble.liveVitals, store: healthStore)
@@ -95,8 +101,17 @@ struct AppShellView: View {
   }
 
   private func openHomeHealthRoute(_ route: HealthRoute) {
-    homeHealthPath = [route]
+    homePath = [.health(route)]
   }
+
+  private func openHomeActivity(_ item: ActivityTimelineItem) {
+    homePath = [.activity(item)]
+  }
+}
+
+enum HomeRoute: Hashable {
+  case health(HealthRoute)
+  case activity(ActivityTimelineItem)
 }
 
 enum GooseAppTab: String, CaseIterable, Identifiable {

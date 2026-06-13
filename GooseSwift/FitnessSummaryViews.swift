@@ -41,9 +41,9 @@ struct FitnessSummaryView: View {
 
           FitnessWorkoutDetailsCard(
             workoutTime: formatDuration(session.elapsed),
-            elapsedTime: formatDuration(session.elapsed + 12),
-            activeCalories: "\(activeCalories)KCAL",
-            totalCalories: "\(activeCalories + 2)KCAL",
+            elapsedTime: formatDuration(session.elapsed),
+            activeCalories: "\(activeCalories) cal",
+            totalCalories: "\(activeCalories + 2) cal",
             detailMetricTitle: detailMetricTitle,
             detailMetricValue: detailMetricValue,
             averageHeartRate: averageHeartRateText
@@ -141,24 +141,24 @@ struct FitnessWorkoutDetailsCard: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 24) {
-        FitnessSummaryMetric(title: "Workout Time", value: workoutTime, color: FitnessColor.workoutYellow)
-        FitnessSummaryMetric(title: "Elapsed Time", value: elapsedTime, color: FitnessColor.workoutYellow)
+        FitnessSummaryMetric(title: "Workout Time", value: workoutTime)
+        FitnessSummaryMetric(title: "Elapsed Time", value: elapsedTime)
       }
       .padding(.bottom, 22)
 
       Divider().background(FitnessColor.separator)
 
       HStack(spacing: 24) {
-        FitnessSummaryMetric(title: "Active Kilocalories", value: activeCalories, color: FitnessColor.movePink)
-        FitnessSummaryMetric(title: "Total Kilocalories", value: totalCalories, color: FitnessColor.movePink)
+        FitnessSummaryMetric(title: "Active Calories", value: activeCalories)
+        FitnessSummaryMetric(title: "Total Calories", value: totalCalories)
       }
       .padding(.vertical, 22)
 
       Divider().background(FitnessColor.separator)
 
       HStack(spacing: 24) {
-        FitnessSummaryMetric(title: detailMetricTitle, value: detailMetricValue, color: FitnessColor.standCyan)
-        FitnessSummaryMetric(title: "Avg Heart Rate", value: averageHeartRate, color: FitnessColor.heartRed)
+        FitnessSummaryMetric(title: detailMetricTitle, value: detailMetricValue)
+        FitnessSummaryMetric(title: "Avg Heart Rate", value: averageHeartRate)
       }
       .padding(.top, 22)
     }
@@ -170,7 +170,6 @@ struct FitnessWorkoutDetailsCard: View {
 struct FitnessSummaryMetric: View {
   let title: String
   let value: String
-  let color: Color
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -181,7 +180,7 @@ struct FitnessSummaryMetric: View {
         .minimumScaleFactor(0.7)
       Text(value)
         .font(.system(size: 28, weight: .bold, design: .rounded))
-        .foregroundStyle(color)
+        .foregroundStyle(.white)
         .lineLimit(1)
         .minimumScaleFactor(0.62)
     }
@@ -238,47 +237,62 @@ struct FitnessZoneRibbon: View {
 
   var body: some View {
     GeometryReader { proxy in
-      let spacing: CGFloat = 4
-      let selectedWidth = min(max(proxy.size.width * 0.40, 134), 162)
-      let inactiveWidth = max((proxy.size.width - selectedWidth - spacing * 4) / 4, 42)
-      let inactiveHeight: CGFloat = 70
-      let selectedHeight = 92 + nextZoneProgress * 96
+      let markerX = min(max(proxy.size.width * heartRateProgress, 9), proxy.size.width - 9)
 
-      ZStack(alignment: .bottomLeading) {
-        HStack(alignment: .bottom, spacing: spacing) {
-          ForEach(HeartRateZone.zones) { zone in
-            let selected = zone.id == selectedZone
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-              .fill(zoneColor(zone.id).opacity(selected ? 1 : 0.42))
-              .frame(width: selected ? selectedWidth : inactiveWidth, height: selected ? selectedHeight : inactiveHeight)
-              .overlay(alignment: .bottomLeading) {
-                if selected {
-                  HStack(spacing: 6) {
-                    Image(systemName: "heart.fill")
-                      .font(.system(size: 17, weight: .bold))
-                    Text("ZONE \(zone.id)")
-                      .font(.system(size: 20, weight: .heavy, design: .rounded))
-                      .lineLimit(1)
-                      .minimumScaleFactor(0.62)
-                  }
-                  .foregroundStyle(.black)
-                  .padding(.horizontal, 12)
-                  .padding(.bottom, 18)
-                }
-              }
-          }
+      VStack(alignment: .leading, spacing: 18) {
+        HStack(alignment: .firstTextBaseline) {
+          Text(zoneTitle)
+            .font(.system(size: 28, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+          Spacer()
+          Text(progressText)
+            .font(.system(size: 18, weight: .bold, design: .rounded))
+            .foregroundStyle(FitnessColor.secondaryText)
+            .monospacedDigit()
         }
 
-        Triangle()
-          .fill(.white)
-          .frame(width: 22, height: 16)
-          .offset(x: CGFloat(selectedZone - 1) * (inactiveWidth + spacing) + 16, y: 14)
+        ZStack(alignment: .leading) {
+          HStack(spacing: 3) {
+            ForEach(HeartRateZone.zones) { zone in
+              RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(zoneColor(zone.id))
+                .opacity(zone.id == selectedZone ? 1 : 0.46)
+            }
+          }
+          .frame(height: 38)
+          .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+          VStack(spacing: 0) {
+            Triangle()
+              .fill(.white)
+              .frame(width: 18, height: 13)
+              .rotationEffect(.degrees(180))
+            Capsule()
+              .fill(.white)
+              .frame(width: 5, height: 56)
+          }
+          .shadow(color: .black.opacity(0.32), radius: 8, x: 0, y: 3)
+          .offset(x: markerX - 9, y: -10)
+        }
+        .frame(height: 78)
+
+        HStack {
+          ForEach(HeartRateZone.zones) { zone in
+            VStack(spacing: 3) {
+              Text("Z\(zone.id)")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+              Text(zone.range)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(zone.id == selectedZone ? .white : FitnessColor.secondaryText)
+            .frame(maxWidth: .infinity)
+          }
+        }
       }
-      .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottomLeading)
+      .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
     }
-    .frame(height: 190)
-    .animation(.spring(response: 0.28, dampingFraction: 0.82), value: selectedZone)
-    .animation(.spring(response: 0.28, dampingFraction: 0.82), value: nextZoneProgress)
+    .frame(height: 174)
+    .animation(.spring(response: 0.28, dampingFraction: 0.84), value: heartRateProgress)
   }
 
   private var selectedZone: Int {
@@ -288,35 +302,26 @@ struct FitnessZoneRibbon: View {
     return HeartRateZone.zoneID(for: currentHeartRate)
   }
 
-  private var nextZoneProgress: CGFloat {
+  private var heartRateProgress: CGFloat {
     guard let currentHeartRate else {
-      return 0.2
+      return 0
     }
+    return min(max(CGFloat(currentHeartRate) / CGFloat(HeartRateZone.maxHeartRate), 0), 1)
+  }
 
-    let bpm = CGFloat(currentHeartRate)
-    let maxHeartRate = CGFloat(HeartRateZone.maxHeartRate)
-    let lower: CGFloat
-    let upper: CGFloat
-
-    switch selectedZone {
-    case 1:
-      lower = 0
-      upper = maxHeartRate * 0.60
-    case 2:
-      lower = maxHeartRate * 0.60
-      upper = maxHeartRate * 0.70
-    case 3:
-      lower = maxHeartRate * 0.70
-      upper = maxHeartRate * 0.80
-    case 4:
-      lower = maxHeartRate * 0.80
-      upper = maxHeartRate * 0.90
-    default:
-      lower = maxHeartRate * 0.90
-      upper = maxHeartRate
+  private var zoneTitle: String {
+    guard currentHeartRate != nil else {
+      return "No HR"
     }
+    return "Zone \(selectedZone)"
+  }
 
-    return min(max((bpm - lower) / max(upper - lower, 1), 0), 1)
+  private var progressText: String {
+    guard let currentHeartRate else {
+      return "-- bpm"
+    }
+    let percent = Int((heartRateProgress * 100).rounded())
+    return "\(currentHeartRate) bpm | \(percent)% max"
   }
 
   private func zoneColor(_ id: Int) -> Color {

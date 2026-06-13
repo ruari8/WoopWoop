@@ -91,6 +91,13 @@ final class ActivitySessionModel: ObservableObject {
     heartRateProvider = nil
   }
 
+  func clearFinishedWorkout() {
+    guard !isActive, endedAt != nil else {
+      return
+    }
+    resetMetrics(keepingSelection: true)
+  }
+
   func tick(now: Date, heartRate: Int?) {
     guard isActive, !isPaused else {
       return
@@ -144,4 +151,3 @@ final class ActivitySessionModel: ObservableObject {
     heartRateProvider = nil
   }
 }
-

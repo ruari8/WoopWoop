@@ -25,7 +25,7 @@ extension HealthDataStore {
       return "Balanced"
     }
     if percent >= 25 {
-      return "Draining"
+      return "Using energy"
     }
     return "Low"
   }
@@ -339,6 +339,29 @@ extension HealthDataStore {
     return action?["summary"] as? String
       ?? action?["action"] as? String
       ?? (report?["issues"] as? [String])?.first
+  }
+
+  nonisolated static func userFacingPacketActionText(_ text: String) -> String {
+    let normalized = text.lowercased()
+    if normalized.contains("persist")
+      && normalized.contains("two")
+      && normalized.contains("decoded")
+      && normalized.contains("step") {
+      return "Keep the band connected; steps need at least two counter samples."
+    }
+    if normalized.contains("step") && normalized.contains("counter") && normalized.contains("blocked") {
+      return "Walk with the band connected, then run Extract again."
+    }
+    if normalized.contains("trusted") && normalized.contains("vital") {
+      return "Capture more trusted overnight vitals, then run Extract again."
+    }
+    if normalized.contains("baseline") {
+      return "Needs more history to build a baseline."
+    }
+    if text.count > 72 {
+      return "\(text.prefix(72))..."
+    }
+    return text
   }
 
   static func boolValue(_ value: Any?) -> Bool? {

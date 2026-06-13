@@ -177,13 +177,16 @@ extension GooseAppModel {
     let externalName = session["external_activity_type_name"] as? String
     let syncStatus = session["sync_status"] as? String ?? ""
     let baseTitle = nonEmpty(externalName) ?? nonEmpty(customLabel) ?? activityType.replacingOccurrences(of: "_", with: " ").capitalized
-    let title = syncStatus == "candidate" ? "Candidate \(baseTitle)" : baseTitle
+    let title = baseTitle
     let sessionDurationMs = int64Value(session["duration_ms"]) ?? activityEndMilliseconds(from: session).map { max(0, $0 - startMs) }
     let durationSeconds = doubleValue(metrics["duration"]?["value"]) ?? Double(sessionDurationMs ?? 0) / 1000
     let distanceMeters = doubleValue(metrics["distance"]?["value"])
     let averageHeartRate = doubleValue(metrics["average_hr"]?["value"]).map { Int($0.rounded()) }
+    let maxHeartRate = doubleValue(metrics["max_hr"]?["value"]).map { Int($0.rounded()) }
+    let zoneDurations = Self.activityTimelineZoneDurations(metrics: metrics)
 
-    guard Self.activityTimelineSessionIsDisplaySafe(session, metrics: Array(metrics.values)) else {
+    guard Self.activityTimelineSessionIsLoggedWorkout(session),
+          Self.activityTimelineSessionIsDisplaySafe(session, metrics: Array(metrics.values)) else {
       return nil
     }
 
@@ -195,7 +198,9 @@ extension GooseAppModel {
       syncStatus: syncStatus,
       durationSeconds: durationSeconds,
       distanceMeters: distanceMeters,
-      averageHeartRate: averageHeartRate
+      averageHeartRate: averageHeartRate,
+      maxHeartRate: maxHeartRate,
+      zoneDurations: zoneDurations
     )
   }
 
@@ -254,7 +259,14 @@ extension GooseAppModel {
       return true
     }
     let candidateCount = displaySafeSessions.filter { ($0["sync_status"] as? String) == "candidate" }.count
-    let visibleSessions = displaySafeSessions.filter { session in
+    let loggedWorkoutSessions = displaySafeSessions.filter { session in
+      guard activityTimelineSessionIsLoggedWorkout(session) else {
+        skippedCounts["not_logged_workout", default: 0] += 1
+        return false
+      }
+      return true
+    }
+    let visibleSessions = loggedWorkoutSessions.filter { session in
       guard let startMs = timelineActivityStartMilliseconds(from: session) else {
         skippedCounts["missing_start", default: 0] += 1
         return false
@@ -295,10 +307,11 @@ extension GooseAppModel {
       .sorted { $0.key < $1.key }
       .map { "\($0.key)=\($0.value)" }
       .joined(separator: ", ")
-    let candidateText = candidateCount > 0 ? " | candidates \(candidateCount)" : ""
+    let candidateText = candidateCount > 0 ? " | hidden candidates \(candidateCount)" : ""
+    let itemLabel = sortedItems.count == 1 ? "logged workout" : "logged workouts"
     let status = sortedItems.isEmpty
-      ? "No activities today | raw \(sessions.count)\(skippedText.isEmpty ? "" : " | \(skippedText)")"
-      : "\(sortedItems.count) activities today | raw \(sessions.count)\(candidateText)\(skippedText.isEmpty ? "" : " | skipped \(skippedText)")"
+      ? "No logged workouts today | raw \(sessions.count)\(candidateText)\(skippedText.isEmpty ? "" : " | \(skippedText)")"
+      : "\(sortedItems.count) \(itemLabel) today | raw \(sessions.count)\(candidateText)\(skippedText.isEmpty ? "" : " | skipped \(skippedText)")"
 
     return ActivityTimelineRefreshResult(items: sortedItems, status: status)
   }
@@ -319,12 +332,14 @@ extension GooseAppModel {
     let externalName = session["external_activity_type_name"] as? String
     let syncStatus = session["sync_status"] as? String ?? ""
     let baseTitle = timelineNonEmpty(externalName) ?? timelineNonEmpty(customLabel) ?? activityType.replacingOccurrences(of: "_", with: " ").capitalized
-    let title = syncStatus == "candidate" ? "Candidate \(baseTitle)" : baseTitle
+    let title = baseTitle
     let sessionDurationMs = timelineInt64Value(session["duration_ms"])
       ?? timelineActivityEndMilliseconds(from: session).map { max(0, $0 - startMs) }
     let durationSeconds = timelineDoubleValue(metrics["duration"]?["value"]) ?? Double(sessionDurationMs ?? 0) / 1000
     let distanceMeters = timelineDoubleValue(metrics["distance"]?["value"])
     let averageHeartRate = timelineDoubleValue(metrics["average_hr"]?["value"]).map { Int($0.rounded()) }
+    let maxHeartRate = timelineDoubleValue(metrics["max_hr"]?["value"]).map { Int($0.rounded()) }
+    let zoneDurations = Self.activityTimelineZoneDurations(metrics: metrics)
 
     return ActivityTimelineItem(
       id: sessionID,
@@ -334,8 +349,21 @@ extension GooseAppModel {
       syncStatus: syncStatus,
       durationSeconds: durationSeconds,
       distanceMeters: distanceMeters,
-      averageHeartRate: averageHeartRate
+      averageHeartRate: averageHeartRate,
+      maxHeartRate: maxHeartRate,
+      zoneDurations: zoneDurations
     )
+  }
+
+  nonisolated static func activityTimelineZoneDurations(
+    metrics: [String: [String: Any]]
+  ) -> [Int: TimeInterval] {
+    var durations: [Int: TimeInterval] = [:]
+    for zoneID in 1...5 {
+      let value = timelineDoubleValue(metrics["hr_zone_\(zoneID)_duration"]?["value"]) ?? 0
+      durations[zoneID] = max(value, 0)
+    }
+    return durations
   }
 
   nonisolated static func activityTimelineSessionIsDisplaySafe(
@@ -346,6 +374,25 @@ extension GooseAppModel {
       return false
     }
     return !metrics.contains { activityTimelineValueContainsPlatformSourceMarker($0) }
+  }
+
+  nonisolated static func activityTimelineSessionIsLoggedWorkout(_ session: [String: Any]) -> Bool {
+    let syncStatus = timelineNonEmpty(session["sync_status"] as? String)?.lowercased()
+    if syncStatus == "candidate" {
+      return false
+    }
+
+    let detectionMethod = timelineNonEmpty(session["detection_method"] as? String)?.lowercased()
+    if detectionMethod == "user_assigned" {
+      return true
+    }
+
+    if syncStatus == "user_confirmed" {
+      return true
+    }
+
+    let source = timelineNonEmpty(session["source"] as? String)?.lowercased()
+    return source == "ios.live_activity"
   }
 
   nonisolated static func activityTimelineMetricsByName(

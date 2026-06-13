@@ -2,12 +2,12 @@ import SwiftUI
 
 struct HomeDashboardView: View {
   let model: GooseAppModel
-  @EnvironmentObject private var router: AppRouter
   @ObservedObject var connectionStatus: GooseConnectionStatusStore
   @ObservedObject var activityTimeline: HomeActivityTimelineStore
   @ObservedObject var healthStore: HealthDataStore
   @Binding var selectedDate: Date
   let openHealthRoute: (HealthRoute) -> Void
+  let openActivity: (ActivityTimelineItem) -> Void
   @State private var showingScoreDatePicker = false
   @State private var showingCardioLoadSheet = false
   @State private var selectedHealthMonitorTrend: HealthMetricSnapshot?
@@ -17,17 +17,23 @@ struct HomeDashboardView: View {
       LazyVStack(alignment: .leading, spacing: 18) {
         HomeDailyScoreCard(
           scores: scoreSnapshots,
-          actionSummary: dailyActionSummary,
-          coachTip: CoachTipFactory.homeTip(healthStore: healthStore, appModel: model),
-          openScore: openHealth,
-          openCoach: openCoach
+          openScore: openHealth
         )
 
-        HomeStressEnergySection(
-          stress: landingSnapshot(for: .stress),
-          energy: landingSnapshot(for: .energyBank),
-          openStress: { openHealth(.stress) }
+        HomeCoreMetricsSection(
+          heartRateValue: liveHeartRateValue,
+          heartRateStatus: liveHeartRateStatus,
+          heartRateSource: liveHeartRateSource,
+          stepsValue: healthStore.whoopStepsDisplayText(for: selectedDate),
+          stepsStatus: stepsStatusText,
+          stepsSource: healthStore.whoopStepsSource(for: selectedDate),
+          openHeartRate: { openHealth(.heartRate) },
+          openSteps: { openHealth(.steps) }
         )
+
+        HomeDataReadinessCard(message: dailyActionSummary) {
+          openHealth(.packetInputs)
+        }
 
         HomeCardioLoadWidget(
           snapshot: landingSnapshot(for: .cardioLoad),
@@ -44,11 +50,10 @@ struct HomeDashboardView: View {
 
         HomeTimelineSection(
           sleep: homeSnapshot(for: .sleep),
-          activity: homeSnapshot(for: .strain),
           recovery: homeSnapshot(for: .recovery),
           activities: activityTimeline.items,
           openSleep: { openHealth(.sleep) },
-          openActivity: { openHealth(.strain) },
+          openActivity: openActivity,
           openRecovery: { openHealth(.recovery) }
         )
 
@@ -158,6 +163,33 @@ struct HomeDashboardView: View {
     return healthStore.packetDerivedScoreNextActionSummary()
   }
 
+  private var liveHeartRateValue: String {
+    guard let bpm = model.ble.liveVitals.liveHeartRateBPM else {
+      return "--"
+    }
+    return "\(bpm)"
+  }
+
+  private var liveHeartRateStatus: String {
+    guard model.ble.liveVitals.liveHeartRateBPM != nil else {
+      return healthStore.heartRateTimelineStatus
+    }
+    return HealthDataStore.relativeText(for: model.ble.liveVitals.liveHeartRateUpdatedAt) ?? "Live"
+  }
+
+  private var liveHeartRateSource: HealthDataSource {
+    model.ble.liveVitals.liveHeartRateBPM == nil
+      ? .unavailable("BLE heart-rate stream waiting")
+      : .live(model.ble.liveVitals.liveHeartRateSource)
+  }
+
+  private var stepsStatusText: String {
+    if Calendar.current.isDate(selectedDate, inSameDayAs: Date()) {
+      return healthStore.whoopStepsStatusText()
+    }
+    return healthStore.whoopStepsSource(for: selectedDate).detail
+  }
+
   private var landingSnapshots: [HealthMetricSnapshot] {
     healthStore.landingSnapshots(
       liveHeartRateBPM: nil,
@@ -212,8 +244,4 @@ struct HomeDashboardView: View {
     }
   }
 
-  private func openCoach(_ prompt: String) {
-    router.openCoach(prompt: prompt)
-    model.recordUIAction("coach.opened", detail: "Home daily score card")
-  }
 }

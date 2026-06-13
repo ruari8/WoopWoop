@@ -22,7 +22,7 @@ struct HealthView: View {
 
         HealthRouteShortcutSection(
           title: "Explore Health",
-          snapshots: snapshots(for: [.sleep, .recovery, .strain, .stress, .cardioLoad, .energyBank])
+          snapshots: snapshots(for: [.heartRate, .steps, .sleep, .recovery, .strain, .stress, .cardioLoad, .energyBank])
         )
 
         HealthRouteShortcutSection(
@@ -67,9 +67,9 @@ struct HealthView: View {
   private var landingSnapshots: [HealthMetricSnapshot] {
     store
       .landingSnapshots(
-        liveHeartRateBPM: nil,
-        liveHeartRateSource: "health dashboard stable route snapshots",
-        liveHeartRateUpdatedAt: nil
+        liveHeartRateBPM: liveVitals.liveHeartRateBPM,
+        liveHeartRateSource: liveVitals.liveHeartRateSource,
+        liveHeartRateUpdatedAt: liveVitals.liveHeartRateUpdatedAt
       )
   }
 
